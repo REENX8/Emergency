@@ -3,13 +3,13 @@ routers/buildings.py — Building CRUD, floor image upload, node/edge management
 """
 
 import copy
-import os
 import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+import storage
 from database import get_db
 from dynamic_graph import build_graph_from_db, get_exits_from_db, graph_to_cytoscape
 from models import Building, Edge, Floor, Node
@@ -27,9 +27,6 @@ from smoke_propagation import (
     smoke_levels_to_cytoscape,
 )
 from weather import compute_smoke_spread, fetch_weather
-
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/buildings", tags=["buildings"])
 
@@ -91,11 +88,9 @@ async def upload_floor(
 
     ext = image.filename.rsplit(".", 1)[-1].lower() if "." in image.filename else "png"
     filename = f"b{building_id}_f{floor_number}_{uuid.uuid4().hex[:8]}.{ext}"
-    dest = os.path.join(UPLOAD_DIR, filename)
 
     content = await image.read()
-    with open(dest, "wb") as f:
-        f.write(content)
+    stored_path = await storage.upload_file(content, filename, image.content_type)
 
     # Try to read image dimensions (PNG/JPG only)
     width_px, height_px = 0, 0
@@ -105,7 +100,6 @@ async def upload_floor(
             if ext == "png":
                 width_px  = struct.unpack(">I", content[16:20])[0]
                 height_px = struct.unpack(">I", content[20:24])[0]
-            # JPEG dimension parsing is complex — leave as 0 for now
         except Exception:
             pass
 
@@ -116,10 +110,8 @@ async def upload_floor(
         .first()
     )
     if existing:
-        old_path = os.path.join(UPLOAD_DIR, existing.image_filename)
-        if os.path.exists(old_path):
-            os.remove(old_path)
-        existing.image_filename  = filename
+        await storage.delete_file(existing.image_filename)
+        existing.image_filename  = stored_path
         existing.image_width_px  = width_px
         existing.image_height_px = height_px
         existing.scale_px_per_m  = scale_px_per_m
@@ -130,7 +122,7 @@ async def upload_floor(
     floor = Floor(
         building_id     = building_id,
         floor_number    = floor_number,
-        image_filename  = filename,
+        image_filename  = stored_path,
         image_width_px  = width_px,
         image_height_px = height_px,
         scale_px_per_m  = scale_px_per_m,

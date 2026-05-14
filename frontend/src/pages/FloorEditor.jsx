@@ -256,7 +256,9 @@ export default function FloorEditor() {
 
   const activeFloorData = floors.find(f => f.floor_number === activeFloor);
   const floorImageUrl = activeFloorData?.image_filename
-    ? `${API}/uploads/${activeFloorData.image_filename}`
+    ? (activeFloorData.image_filename.startsWith('http')
+        ? activeFloorData.image_filename
+        : `${API}/uploads/${activeFloorData.image_filename}`)
     : null;
 
   if (!building) return <div style={{ padding: 40, color: '#94a3b8' }}>กำลังโหลด...</div>;
