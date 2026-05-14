@@ -20,12 +20,16 @@ import logging
 import os
 from typing import Optional
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from database import init_db
+import storage
 from graph_builder import (
     build_evacuation_graph,
     get_exits,
@@ -55,10 +59,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded floor plan images
-UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+# Serve uploaded floor plan images (local dev only — Supabase mode uses CDN URLs)
+if not storage.is_supabase_configured():
+    UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 # Include routers
 app.include_router(buildings_router.router)

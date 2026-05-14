@@ -157,7 +157,10 @@ export default function SimulationPage() {
   const floors         = result?.floors || graph?.floors || [];
   const activeFloor    = floors.find(f => f.image_filename);
   const floorImageUrl  = activeFloor?.image_filename
-    ? `${API}/uploads/${activeFloor.image_filename}` : null;
+    ? (activeFloor.image_filename.startsWith('http')
+        ? activeFloor.image_filename
+        : `${API}/uploads/${activeFloor.image_filename}`)
+    : null;
 
   if (!building) return <div style={{ padding: 40, color: '#94a3b8' }}>กำลังโหลด...</div>;
 
