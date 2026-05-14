@@ -2,8 +2,7 @@ services:
   # ── Backend (FastAPI) ──────────────────────────────────────────────
   - type: web
     name: evacuation-backend
-    env: python
-    region: singapore        # ใกล้ไทยที่สุด
+    env: python     
     plan: free
     rootDir: backend
     buildCommand: pip install -r requirements.txt
