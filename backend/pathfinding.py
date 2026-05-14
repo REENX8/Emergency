@@ -39,35 +39,35 @@ def _euclidean_heuristic(G: nx.Graph, u: str, v: str) -> float:
     return metres / _WALK_SPEED  # seconds
 
 
-def dijkstra(
+def _dijkstra_full(
     G: nx.Graph,
     source: str,
     target: str,
-) -> tuple[list[str], float] | tuple[None, float]:
+) -> tuple[list[str] | None, float, int]:
     """
-    Single-source shortest path from source to target using Dijkstra's algorithm.
-
-    Returns (path_as_node_list, total_cost) or (None, inf) if unreachable.
-    Edges with weight=inf (smoke-blocked) are treated as impassable.
+    Dijkstra returning (path, cost, nodes_settled).
+    Internal function — callers that need nodes_visited use this.
     """
     if source not in G or target not in G:
-        return None, float("inf")
+        return None, float("inf"), 0
 
     dist: dict[str, float] = {source: 0.0}
     prev: dict[str, Optional[str]] = {source: None}
     heap: list[tuple[float, str]] = [(0.0, source)]
+    nodes_settled = 0
 
     while heap:
         cost, u = heapq.heappop(heap)
         if cost > dist.get(u, float("inf")):
-            continue  # stale entry
+            continue
+        nodes_settled += 1
         if u == target:
             break
 
         for v, edge_data in G[u].items():
             w = edge_data.get("weight", float("inf"))
             if w == float("inf"):
-                continue  # smoke-blocked or otherwise impassable
+                continue
             new_cost = cost + w
             if new_cost < dist.get(v, float("inf")):
                 dist[v] = new_cost
@@ -75,43 +75,41 @@ def dijkstra(
                 heapq.heappush(heap, (new_cost, v))
 
     if target not in dist or dist[target] == float("inf"):
-        return None, float("inf")
+        return None, float("inf"), nodes_settled
 
-    # Reconstruct path
     path = []
     node = target
     while node is not None:
         path.append(node)
         node = prev[node]
     path.reverse()
-    return path, dist[target]
+    return path, dist[target], nodes_settled
 
 
-def astar(
+def _astar_full(
     G: nx.Graph,
     source: str,
     target: str,
-) -> tuple[list[str], float] | tuple[None, float]:
+) -> tuple[list[str] | None, float, int]:
     """
-    A* shortest path from source to target.
-    Uses Euclidean pixel distance as an admissible heuristic.
-
-    Returns (path_as_node_list, total_cost) or (None, inf) if unreachable.
+    A* returning (path, cost, nodes_settled).
+    Internal function — callers that need nodes_visited use this.
     """
     if source not in G or target not in G:
-        return None, float("inf")
+        return None, float("inf"), 0
 
     g_score: dict[str, float] = {source: 0.0}
     prev: dict[str, Optional[str]] = {source: None}
-    # heap entries: (f_score, g_score_tiebreaker, node)
     heap: list[tuple[float, float, str]] = [
         (_euclidean_heuristic(G, source, target), 0.0, source)
     ]
+    nodes_settled = 0
 
     while heap:
         f, g, u = heapq.heappop(heap)
         if g > g_score.get(u, float("inf")):
-            continue  # stale
+            continue
+        nodes_settled += 1
         if u == target:
             break
 
@@ -127,7 +125,7 @@ def astar(
                 heapq.heappush(heap, (f_score, tentative_g, v))
 
     if target not in g_score or g_score[target] == float("inf"):
-        return None, float("inf")
+        return None, float("inf"), nodes_settled
 
     path = []
     node = target
@@ -135,7 +133,37 @@ def astar(
         path.append(node)
         node = prev[node]
     path.reverse()
-    return path, g_score[target]
+    return path, g_score[target], nodes_settled
+
+
+def dijkstra(
+    G: nx.Graph,
+    source: str,
+    target: str,
+) -> tuple[list[str], float] | tuple[None, float]:
+    """
+    Single-source shortest path from source to target using Dijkstra's algorithm.
+
+    Returns (path_as_node_list, total_cost) or (None, inf) if unreachable.
+    Edges with weight=inf (smoke-blocked) are treated as impassable.
+    """
+    path, cost, _ = _dijkstra_full(G, source, target)
+    return path, cost
+
+
+def astar(
+    G: nx.Graph,
+    source: str,
+    target: str,
+) -> tuple[list[str], float] | tuple[None, float]:
+    """
+    A* shortest path from source to target.
+    Uses Euclidean pixel distance as an admissible heuristic.
+
+    Returns (path_as_node_list, total_cost) or (None, inf) if unreachable.
+    """
+    path, cost, _ = _astar_full(G, source, target)
+    return path, cost
 
 
 def find_all_exit_routes(
@@ -155,22 +183,23 @@ def find_all_exit_routes(
 
     Returns:
         List of dicts, each describing one route:
-          {exit, path, cost_seconds, reachable, algorithm}
+          {exit, path, cost_seconds, reachable, algorithm, nodes_visited}
         Sorted by cost_seconds ascending (best route first).
     """
-    fn = dijkstra if algorithm == "dijkstra" else astar
+    fn = _dijkstra_full if algorithm == "dijkstra" else _astar_full
     results = []
 
     for exit_node in exits:
         if exit_node == source:
             continue
-        path, cost = fn(G, source, exit_node)
+        path, cost, nodes_visited = fn(G, source, exit_node)
         results.append({
-            "exit": exit_node,
-            "path": path or [],
-            "cost_seconds": round(cost, 1) if cost != float("inf") else None,
-            "reachable": path is not None,
-            "algorithm": algorithm,
+            "exit":          exit_node,
+            "path":          path or [],
+            "cost_seconds":  round(cost, 1) if cost != float("inf") else None,
+            "reachable":     path is not None,
+            "algorithm":     algorithm,
+            "nodes_visited": nodes_visited,
         })
 
     results.sort(key=lambda r: (not r["reachable"], r["cost_seconds"] or float("inf")))
@@ -184,8 +213,7 @@ def compare_algorithms(
 ) -> dict:
     """
     Run both algorithms and return results keyed by algorithm name.
-    Includes wall-clock execution time in milliseconds for each algorithm.
-    Used for the before/after comparison table in the frontend.
+    Includes wall-clock execution time in milliseconds and nodes_visited for each.
     """
     t0 = time.perf_counter()
     dijkstra_routes = find_all_exit_routes(G, source, exits, "dijkstra")
@@ -195,10 +223,14 @@ def compare_algorithms(
     astar_routes = find_all_exit_routes(G, source, exits, "astar")
     astar_ms = round((time.perf_counter() - t0) * 1000, 3)
 
+    dijkstra_nodes = sum(r["nodes_visited"] for r in dijkstra_routes)
+    astar_nodes    = sum(r["nodes_visited"] for r in astar_routes)
+
     return {
         "dijkstra": dijkstra_routes,
         "astar":    astar_routes,
         "timing_ms": {"dijkstra": dijkstra_ms, "astar": astar_ms},
+        "nodes_visited": {"dijkstra": dijkstra_nodes, "astar": astar_nodes},
     }
 
 

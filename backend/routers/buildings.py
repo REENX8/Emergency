@@ -21,6 +21,11 @@ from schemas import (
     GraphResponse,
     NodeCreate, NodeResponse, NodeUpdate,
 )
+from smoke_propagation import (
+    compute_smoke_levels,
+    apply_smoke_levels,
+    smoke_levels_to_cytoscape,
+)
 from weather import compute_smoke_spread, fetch_weather
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
@@ -389,4 +394,141 @@ async def evacuate_building(
             }
             for f in floors
         ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dedicated algorithm comparison endpoint (Feature 1)
+# ---------------------------------------------------------------------------
+
+class CompareRequest(BaseModel):
+    fire_location:         str
+    crowd_densities:       list[CrowdDensityItem] = []
+    use_weather_wind:      bool  = True
+    manual_wind_direction: Optional[float] = None
+    manual_wind_speed:     Optional[float] = None
+
+
+@router.post("/{building_id}/evacuate/compare")
+async def compare_evacuation(
+    building_id: int,
+    req: CompareRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Run Dijkstra AND A* on the same conditions and return a detailed comparison:
+      - paths from each algorithm to every exit
+      - execution time (ms) per algorithm
+      - nodes_visited per algorithm
+      - smoke level per edge (new continuous model)
+    """
+    if not db.get(Building, building_id):
+        raise HTTPException(404, detail="Building not found")
+
+    crowd_map = {cd.node_key: cd.density for cd in req.crowd_densities}
+    G = build_graph_from_db(building_id, db, crowd_densities=crowd_map)
+
+    if req.fire_location not in G:
+        raise HTTPException(
+            400, detail=f"fire_location '{req.fire_location}' not in building graph"
+        )
+
+    # Weather
+    if req.use_weather_wind:
+        weather = await fetch_weather()
+    else:
+        weather = {
+            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_direction_deg": req.manual_wind_direction or 0.0,
+            "temperature_c":      None, "humidity_pct": None,
+            "description": "Manual override", "station": "manual", "source": "manual",
+        }
+
+    # New continuous smoke propagation
+    smoke_levels = compute_smoke_levels(
+        fire_node=req.fire_location,
+        G=G,
+        wind_direction_deg=weather["wind_direction_deg"],
+        wind_speed_ms=weather["wind_speed_ms"],
+    )
+    G_sim = copy.deepcopy(G)
+    apply_smoke_levels(G_sim, smoke_levels)
+
+    exits = get_exits_from_db(building_id, db)
+    exits = [e for e in exits if e in G_sim]
+    if not exits:
+        raise HTTPException(400, detail="No reachable exits.")
+
+    comparison = compare_algorithms(G_sim, req.fire_location, exits)
+    smoke_annotations = smoke_levels_to_cytoscape(smoke_levels)
+    cy = graph_to_cytoscape(G_sim)
+
+    return {
+        "fire_location":      req.fire_location,
+        "weather":            weather,
+        "comparison":         comparison,
+        "smoke_annotations":  smoke_annotations,
+        "graph_state":        cy,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Smoke propagation endpoint (Feature 2)
+# ---------------------------------------------------------------------------
+
+class SmokePropagateRequest(BaseModel):
+    fire_node:         str
+    use_weather_wind:  bool  = True
+    manual_wind_direction: Optional[float] = None
+    manual_wind_speed:     Optional[float] = None
+
+
+@router.post("/{building_id}/smoke/propagate")
+async def propagate_smoke(
+    building_id: int,
+    req: SmokePropagateRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Compute continuous smoke levels for every edge using:
+        s(e) = s_fire * exp(-lambda * dist(e, fire)) * phi(wind_angle)
+
+    Returns smoke level per edge + which edges are blocked (s >= 0.9).
+    This endpoint is called automatically by the frontend when a fire
+    incident is reported, and its output is overlaid on the BuildingMap.
+    """
+    if not db.get(Building, building_id):
+        raise HTTPException(404, detail="Building not found")
+
+    G = build_graph_from_db(building_id, db)
+
+    if req.fire_node not in G:
+        raise HTTPException(400, detail=f"fire_node '{req.fire_node}' not in building graph")
+
+    if req.use_weather_wind:
+        weather = await fetch_weather()
+    else:
+        weather = {
+            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_direction_deg": req.manual_wind_direction or 0.0,
+            "source": "manual",
+        }
+
+    smoke_levels = compute_smoke_levels(
+        fire_node=req.fire_node,
+        G=G,
+        wind_direction_deg=weather["wind_direction_deg"],
+        wind_speed_ms=weather["wind_speed_ms"],
+    )
+
+    annotations = smoke_levels_to_cytoscape(smoke_levels)
+    blocked = [a for a in annotations if a["blocked"]]
+
+    return {
+        "fire_node":          req.fire_node,
+        "wind_direction_deg": weather["wind_direction_deg"],
+        "wind_speed_ms":      weather["wind_speed_ms"],
+        "smoke_annotations":  annotations,
+        "blocked_edges":      blocked,
+        "blocked_count":      len(blocked),
     }

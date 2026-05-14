@@ -36,6 +36,7 @@ from pathfinding import find_all_exit_routes, compare_algorithms, estimate_evacu
 from weather import fetch_weather, compute_smoke_spread
 from routers import buildings as buildings_router
 from routers import incidents as incidents_router
+from routers import analysis as analysis_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 # Include routers
 app.include_router(buildings_router.router)
 app.include_router(incidents_router.router)
+app.include_router(analysis_router.router)
 
 # Initialise database tables on startup
 @app.on_event("startup")
