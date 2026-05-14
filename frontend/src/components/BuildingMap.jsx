@@ -49,6 +49,8 @@ const STYLESHEET = [
   // Compare mode: second algorithm path
   { selector: 'edge.compare-path',     style: { 'line-color': '#a78bfa', width: 3, 'line-style': 'dashed', 'z-index': 12 } },
   { selector: 'node.compare-path',     style: { 'border-color': '#a78bfa', 'border-width': 3 } },
+  { selector: 'node.fire-spread',      style: { 'background-color': '#f97316', 'border-color': '#fed7aa', 'border-width': 4 } },
+  { selector: 'node.fire-spread-hot',  style: { 'background-color': '#dc2626', 'border-color': '#fca5a5', 'border-width': 5 } },
 ];
 
 
@@ -65,6 +67,9 @@ export default function BuildingMap({
   bottleneckEdges   = [],      // [[u,v], ...] to highlight orange
   maxflowBadges     = {},      // {exit_id: persons}
   compareResult     = null,    // {dijkstra: routes, astar: routes} for Compare mode
+  fireSpreadNodes   = [],      // node ids currently on fire (at slider time)
+  fireSpreadData    = [],      // [{node, reach_time}] full data for intensity
+  fireSpreadTime    = 0,       // current slider time
 }) {
   const cyRef = useRef(null);
 
@@ -75,7 +80,8 @@ export default function BuildingMap({
 
     cy.elements().removeClass(
       'fire on-path best-path smoke smoke-low smoke-mid smoke-high smoke-blocked ' +
-      'incident-smoke incident-crowd bottleneck maxflow compare-path'
+      'incident-smoke incident-crowd bottleneck maxflow compare-path ' +
+      'fire-spread fire-spread-hot'
     );
 
     if (fireNode) cy.getElementById(fireNode).addClass('fire');
@@ -152,8 +158,19 @@ export default function BuildingMap({
         }
       }
     }
+    // Fire spread nodes: orange (just caught) or red (fully burning)
+    fireSpreadNodes.forEach(nodeId => {
+      const nodeData = fireSpreadData.find(n => n.node === nodeId);
+      const reachTime = nodeData ? nodeData.reach_time : 0;
+      if ((fireSpreadTime - reachTime) > 60) {
+        cy.getElementById(nodeId).addClass('fire-spread-hot');
+      } else {
+        cy.getElementById(nodeId).addClass('fire-spread');
+      }
+    });
   }, [fireNode, smokeEdges, smokeAnnotations, selectedPath, bestPath,
-      elements, incidentNodes, bottleneckEdges, maxflowBadges, compareResult]);
+      elements, incidentNodes, bottleneckEdges, maxflowBadges, compareResult,
+      fireSpreadNodes, fireSpreadData, fireSpreadTime]);
 
   // Click-to-report
   useEffect(() => {
@@ -251,8 +268,14 @@ export default function BuildingMap({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
             <div style={{ width: 12, height: 3, background: '#f97316', borderRadius: 2 }} /> bottleneck
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
             <div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 2 }} /> fire
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#f97316' }} /> ไฟเพิ่งถึง
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#dc2626' }} /> ไฟลุกแรง
           </div>
         </div>
 

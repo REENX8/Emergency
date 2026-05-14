@@ -54,6 +54,10 @@ export default function SimulationPage() {
   // Smoke annotations from new model (per edge)
   const [smokeAnnotations, setSmokeAnnotations] = useState([]);
 
+  // Fire spread simulation
+  const [fireSpread, setFireSpread] = useState(null);   // API response
+  const [fireTime,   setFireTime]   = useState(0);       // slider value (seconds)
+
   const loadGraph = useCallback(async () => {
     try {
       const [gRes, nRes] = await Promise.all([
@@ -137,6 +141,21 @@ export default function SimulationPage() {
   }, [buildingId, loadGraph]);
 
   // ---------------------------------------------------------------------------
+  // Fire spread simulation
+  // ---------------------------------------------------------------------------
+  const runFireSpread = async () => {
+    if (!fireNode) return;
+    try {
+      const { data } = await axios.post(`${API}/buildings/${buildingId}/fire/spread`, {
+        fire_node: fireNode,
+        use_weather_wind: true,
+      });
+      setFireSpread(data);
+      setFireTime(0);
+    } catch { /* ignore */ }
+  };
+
+  // ---------------------------------------------------------------------------
   // Derived display data
   // ---------------------------------------------------------------------------
   const activeResult   = result || (compareResult ? {
@@ -194,6 +213,14 @@ export default function SimulationPage() {
           ))}
         </div>
 
+        {/* Fire spread button */}
+        <button onClick={runFireSpread} disabled={!fireNode} style={{
+          padding: '4px 12px', borderRadius: 6, border: 'none', cursor: fireNode ? 'pointer' : 'not-allowed',
+          fontWeight: 600, fontSize: 12,
+          background: fireNode ? '#b45309' : '#334155',
+          color: '#fff', opacity: fireNode ? 1 : 0.5,
+        }}>🔥 ลามไฟ</button>
+
         {weather && (
           <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>
             💨 {weather.wind_speed_ms} m/s · {weather.wind_direction_deg}°
@@ -237,7 +264,25 @@ export default function SimulationPage() {
             bottleneckEdges={bottleneckEdges}
             maxflowBadges={maxflowBadges}
             compareResult={algorithm === 'compare' ? compareResult?.comparison : null}
+            fireSpreadNodes={fireSpread ? fireSpread.nodes.filter(n => n.reach_time <= fireTime).map(n => n.node) : []}
+            fireSpreadData={fireSpread?.nodes || []}
+            fireSpreadTime={fireTime}
           />
+
+          {/* Fire spread timeline slider */}
+          {fireSpread && (
+            <div style={{ background: '#1e293b', padding: '8px 16px', borderTop: '1px solid #334155', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: '#f97316', fontSize: 12, fontWeight: 700 }}>🔥 ไฟลาม</span>
+              <input type="range" min={0} max={Math.ceil(fireSpread.max_time)} value={fireTime}
+                onChange={e => setFireTime(Number(e.target.value))}
+                style={{ flex: 1 }} />
+              <span style={{ color: '#f1f5f9', fontSize: 12, minWidth: 60 }}>{fireTime}s / {Math.ceil(fireSpread.max_time)}s</span>
+              <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                🔥 {fireSpread.nodes.filter(n => n.reach_time <= fireTime).length} nodes
+              </span>
+              <button onClick={() => setFireSpread(null)} style={{ background: '#334155', border: 'none', borderRadius: 4, color: '#94a3b8', padding: '2px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
+            </div>
+          )}
 
           {/* Tab bar */}
           <div style={{

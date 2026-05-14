@@ -22,6 +22,7 @@ from schemas import (
     GraphResponse,
     NodeCreate, NodeResponse, NodeUpdate,
 )
+from fire_spread import compute_fire_spread, fire_spread_to_cytoscape
 from smoke_propagation import (
     compute_smoke_levels,
     apply_smoke_levels,
@@ -497,6 +498,78 @@ async def compare_evacuation(
         "comparison":         comparison,
         "smoke_annotations":  smoke_annotations,
         "graph_state":        cy,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fire spread endpoint (physics-based Dijkstra spread model)
+# ---------------------------------------------------------------------------
+
+class FireSpreadRequest(BaseModel):
+    fire_node:             str
+    use_weather_wind:      bool           = True
+    manual_wind_direction: Optional[float] = None
+    manual_wind_speed:     Optional[float] = None
+
+
+@router.post("/{building_id}/fire/spread")
+async def fire_spread_endpoint(
+    building_id: int,
+    req: FireSpreadRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Compute physics-based fire spread times from a fire source node.
+
+    Uses Dijkstra over the building graph to find the minimum time for fire
+    to reach each node.  Wind direction/speed affect spread rate along edges
+    (tailwind accelerates, headwind has no effect — clamped at 0).
+
+    Returns:
+        fire_node, wind info, reach_time dict, spread_order, unreachable,
+        nodes list (for Cytoscape), max_time
+    """
+    if not db.get(Building, building_id):
+        raise HTTPException(404, detail="Building not found")
+
+    G = build_graph_from_db(building_id, db)
+
+    if req.fire_node not in G:
+        raise HTTPException(400, detail=f"fire_node '{req.fire_node}' not in building graph")
+
+    # Resolve wind source
+    if req.use_weather_wind:
+        weather = await fetch_weather()
+    else:
+        weather = {
+            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_direction_deg": req.manual_wind_direction or 0.0,
+            "temperature_c":      None,
+            "humidity_pct":       None,
+            "description":        "Manual override",
+            "station":            "manual",
+            "source":             "manual",
+        }
+
+    result = compute_fire_spread(
+        fire_node=req.fire_node,
+        G=G,
+        wind_direction_deg=weather["wind_direction_deg"],
+        wind_speed_ms=weather["wind_speed_ms"],
+    )
+
+    nodes_list = fire_spread_to_cytoscape(result["reach_time"])
+    max_time   = max((item["reach_time"] for item in nodes_list), default=0.0)
+
+    return {
+        "fire_node":          req.fire_node,
+        "wind_direction_deg": weather["wind_direction_deg"],
+        "wind_speed_ms":      weather["wind_speed_ms"],
+        "reach_time":         result["reach_time"],
+        "spread_order":       result["spread_order"],
+        "unreachable":        result["unreachable"],
+        "nodes":              nodes_list,
+        "max_time":           round(max_time, 2),
     }
 
 
