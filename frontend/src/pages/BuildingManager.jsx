@@ -23,6 +23,21 @@ const s = {
   actions: { display: 'flex', gap: 8 },
 };
 
+const JSON_PLACEHOLDER = `{
+  "name": "อาคาร IT",
+  "address": "คณะวิทยาศาสตร์และเทคโนโลยี",
+  "description": "3 ชั้น 90 คน",
+  "nodes": [
+    {"node_key": "r101", "type": "room",     "label": "ห้อง 101",   "x": 100, "y": 480, "capacity": 30, "floor_number": 1},
+    {"node_key": "c1",   "type": "corridor", "label": "ทางเดิน 1", "x": 280, "y": 500, "capacity": 0,  "floor_number": 1},
+    {"node_key": "e1",   "type": "exit",     "label": "ทางออก 1",  "x": 480, "y": 500, "capacity": 0,  "floor_number": 1}
+  ],
+  "edges": [
+    {"u_key": "r101", "v_key": "c1", "distance_m": 12, "width_m": 2, "is_stair": false},
+    {"u_key": "c1",   "v_key": "e1", "distance_m": 15, "width_m": 3, "is_stair": false}
+  ]
+}`;
+
 export default function BuildingManager() {
   const navigate = useNavigate();
   const [buildings, setBuildings] = useState([]);
@@ -30,6 +45,10 @@ export default function BuildingManager() {
   const [address, setAddress] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState(null);
+  const [jsonText, setJsonText] = useState('');
+  const [jsonError, setJsonError] = useState(null);
+  const [jsonSuccess, setJsonSuccess] = useState(null);
+  const [jsonOpen, setJsonOpen] = useState(false);
 
   const load = () =>
     axios.get(`${API}/buildings`).then(r => setBuildings(r.data)).catch(() => {});
@@ -45,6 +64,30 @@ export default function BuildingManager() {
     } catch (e) {
       setError(e.response?.data?.detail || 'เกิดข้อผิดพลาด');
     }
+  };
+
+  const importJson = async () => {
+    setJsonError(null); setJsonSuccess(null);
+    let payload;
+    try { payload = JSON.parse(jsonText); }
+    catch { setJsonError('JSON ไม่ถูกต้อง — ตรวจสอบ syntax อีกครั้ง'); return; }
+    try {
+      const { data } = await axios.post(`${API}/buildings/import`, payload);
+      setJsonSuccess(`✓ นำเข้าสำเร็จ: "${data.name}" (${data.nodes_created} nodes, ${data.edges_created} edges)`);
+      setJsonText('');
+      load();
+    } catch (e) {
+      setJsonError(e.response?.data?.detail || 'นำเข้าไม่สำเร็จ');
+    }
+  };
+
+  const loadJsonFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => setJsonText(ev.target.result);
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   const remove = async (id) => {
@@ -76,6 +119,47 @@ export default function BuildingManager() {
             onChange={e => setDescription(e.target.value)} />
           {error && <div style={s.error}>⚠ {error}</div>}
           <button style={{ ...s.btn, ...s.btnPrimary, marginTop: 8 }} onClick={create}>+ เพิ่มอาคาร</button>
+        </div>
+
+        {/* JSON Import */}
+        <div style={s.section}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: jsonOpen ? 14 : 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>📥 นำเข้าจาก JSON</div>
+            <button style={{ ...s.btn, ...s.btnGhost, fontSize: 12 }} onClick={() => { setJsonOpen(o => !o); setJsonError(null); setJsonSuccess(null); }}>
+              {jsonOpen ? '▲ ซ่อน' : '▼ เปิด'}
+            </button>
+          </div>
+
+          {jsonOpen && (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                <label style={{ ...s.btn, ...s.btnGhost, fontSize: 12, cursor: 'pointer' }}>
+                  📂 เลือกไฟล์ .json
+                  <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={loadJsonFile} />
+                </label>
+                <span style={{ fontSize: 12, color: '#475569' }}>หรือวาง JSON ด้านล่าง</span>
+              </div>
+              <textarea
+                style={{
+                  ...s.input, fontFamily: 'monospace', fontSize: 12,
+                  height: 220, resize: 'vertical', marginBottom: 4,
+                }}
+                placeholder={JSON_PLACEHOLDER}
+                value={jsonText}
+                onChange={e => setJsonText(e.target.value)}
+              />
+              <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>
+                fields ที่ต้องการ: <code style={{ color: '#94a3b8' }}>name</code>,{' '}
+                <code style={{ color: '#94a3b8' }}>nodes[]</code> (node_key, type, label, x, y, capacity, floor_number),{' '}
+                <code style={{ color: '#94a3b8' }}>edges[]</code> (u_key, v_key, distance_m, width_m, is_stair)
+              </div>
+              {jsonError   && <div style={{ color: '#f87171', fontSize: 13, marginBottom: 8 }}>⚠ {jsonError}</div>}
+              {jsonSuccess && <div style={{ color: '#4ade80', fontSize: 13, marginBottom: 8 }}>{jsonSuccess}</div>}
+              <button style={{ ...s.btn, ...s.btnPrimary }} onClick={importJson} disabled={!jsonText.trim()}>
+                ⬆ Import อาคาร
+              </button>
+            </>
+          )}
         </div>
 
         {/* Building list */}

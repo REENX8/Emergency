@@ -126,6 +126,23 @@ class IncidentResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Building JSON import
+# ---------------------------------------------------------------------------
+
+class BuildingImportPayload(BaseModel):
+    name:        str
+    address:     str = ""
+    description: str = ""
+    nodes:       list[NodeCreate] = []
+    edges:       list[EdgeCreate] = []
+
+
+class BuildingImportResponse(BuildingResponse):
+    nodes_created: int
+    edges_created: int
+
+
+# ---------------------------------------------------------------------------
 # Graph (for frontend Cytoscape.js)
 # ---------------------------------------------------------------------------
 

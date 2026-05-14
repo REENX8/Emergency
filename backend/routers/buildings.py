@@ -16,6 +16,7 @@ from models import Building, Edge, Floor, Node
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from schemas import (
     BuildingCreate, BuildingResponse,
+    BuildingImportPayload, BuildingImportResponse,
     EdgeCreate, EdgeResponse,
     FloorResponse,
     GraphResponse,
@@ -55,6 +56,42 @@ def get_building(building_id: int, db: Session = Depends(get_db)):
     if not b:
         raise HTTPException(404, detail="Building not found")
     return b
+
+
+@router.post("/import", response_model=BuildingImportResponse, status_code=201)
+def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db)):
+    """
+    Create a new building with all nodes and edges from a single JSON payload.
+    Useful for seeding demo data or bulk import from external tools.
+    """
+    building = Building(
+        name=payload.name,
+        address=payload.address,
+        description=payload.description,
+    )
+    db.add(building)
+    db.flush()  # get building.id before inserting children
+
+    node_keys: set[str] = set()
+    for n in payload.nodes:
+        if n.node_key in node_keys:
+            db.rollback()
+            raise HTTPException(400, detail=f"Duplicate node_key: '{n.node_key}'")
+        node_keys.add(n.node_key)
+        db.add(Node(building_id=building.id, **n.model_dump()))
+
+    db.flush()  # ensure nodes exist for FK references in edges
+
+    for e in payload.edges:
+        for key in (e.u_key, e.v_key):
+            if key not in node_keys:
+                db.rollback()
+                raise HTTPException(400, detail=f"Edge references unknown node_key: '{key}'")
+        db.add(Edge(building_id=building.id, **e.model_dump()))
+
+    db.commit()
+    db.refresh(building)
+    return {**building.__dict__, "nodes_created": len(payload.nodes), "edges_created": len(payload.edges)}
 
 
 @router.delete("/{building_id}", status_code=204)
