@@ -18,9 +18,19 @@ if SQLALCHEMY_DATABASE_URL.startswith("postgres://"):
     SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 _is_sqlite = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
-_kwargs = {"connect_args": {"check_same_thread": False}} if _is_sqlite else {}
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, **_kwargs)
+if _is_sqlite:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+    )
+else:
+    engine = create_engine(
+        SQLALCHEMY_DATABASE_URL,
+        pool_pre_ping=True,      # detect stale connections (Supabase idle timeout)
+        pool_recycle=300,        # recycle connections every 5 min
+        connect_args={"sslmode": "require", "connect_timeout": 10},
+    )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
