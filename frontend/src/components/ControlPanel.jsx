@@ -48,8 +48,20 @@ const s = {
   weatherBox: { background: '#0f172a', borderRadius: 6, padding: 10, fontSize: 12, color: '#94a3b8', lineHeight: 1.7 },
 };
 
-export default function ControlPanel({ onEvacuate, loading, weather }) {
-  const [fireLocation, setFireLocation] = React.useState('r201');
+export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNodes = null }) {
+  // Support both hardcoded (legacy) and DB-backed nodes
+  const dynamicNodes = dbNodes && dbNodes.length > 0 ? dbNodes.map(n => n.node_key) : ALL_NODES;
+  const dynamicExits = dbNodes && dbNodes.length > 0
+    ? dbNodes.filter(n => n.type === 'exit').map(n => n.node_key)
+    : EXITS;
+  const dynamicRooms = dbNodes && dbNodes.length > 0
+    ? dbNodes.filter(n => n.type === 'room').map(n => n.node_key)
+    : ROOMS;
+  const dynamicCorridors = dbNodes && dbNodes.length > 0
+    ? dbNodes.filter(n => n.type === 'corridor').map(n => n.node_key)
+    : ['c1','c2','c3'];
+
+  const [fireLocation, setFireLocation] = React.useState(dynamicNodes[0] || 'r201');
   const [algorithm, setAlgorithm] = React.useState('dijkstra');
   const [blockedExits, setBlockedExits] = React.useState([]);
   const [useWeather, setUseWeather] = React.useState(true);
@@ -96,7 +108,7 @@ export default function ControlPanel({ onEvacuate, loading, weather }) {
       <div style={s.section}>
         <div style={s.label}>Fire Location</div>
         <select style={s.select} value={fireLocation} onChange={e => setFireLocation(e.target.value)}>
-          {ALL_NODES.map(n => <option key={n} value={n}>{n}</option>)}
+          {dynamicNodes.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
       </div>
 
@@ -118,7 +130,7 @@ export default function ControlPanel({ onEvacuate, loading, weather }) {
       <div style={s.section}>
         <div style={s.label}>Block Exits (simulate damage)</div>
         <div>
-          {EXITS.map(e => (
+          {dynamicExits.map(e => (
             <span key={e} style={{ ...s.tag, ...(blockedExits.includes(e) ? s.tagActive : {}) }}
               onClick={() => toggleExit(e)}>
               {blockedExits.includes(e) ? '✗ ' : ''}{e}
@@ -130,15 +142,23 @@ export default function ControlPanel({ onEvacuate, loading, weather }) {
       {/* Crowd density */}
       <div style={s.section}>
         <div style={s.label}>Crowd Density</div>
-        {['c1','c2','c3'].map(node => (
-          <div key={node} style={s.sliderRow}>
-            <div style={s.sliderLabel}>
-              <span>{node}</span>
-              <span>{Math.round((crowdDensities[node] || 0) * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={1} step={0.05} style={s.slider}
-              value={crowdDensities[node] || 0}
-              onChange={e => setCrowdDensities(prev => ({ ...prev, [node]: parseFloat(e.target.value) }))} />
+        {[
+          { group: 'Corridors', nodes: dynamicCorridors },
+          { group: 'Rooms', nodes: dynamicRooms },
+        ].filter(g => g.nodes.length > 0).map(({ group, nodes }) => (
+          <div key={group} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>{group}</div>
+            {nodes.map(node => (
+              <div key={node} style={s.sliderRow}>
+                <div style={s.sliderLabel}>
+                  <span>{node}</span>
+                  <span>{Math.round((crowdDensities[node] || 0) * 100)}%</span>
+                </div>
+                <input type="range" min={0} max={1} step={0.05} style={s.slider}
+                  value={crowdDensities[node] || 0}
+                  onChange={e => setCrowdDensities(prev => ({ ...prev, [node]: parseFloat(e.target.value) }))} />
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -147,7 +167,7 @@ export default function ControlPanel({ onEvacuate, loading, weather }) {
       <div style={s.section}>
         <div style={s.label}>Occupied Rooms (evac time estimate)</div>
         <div>
-          {ROOMS.map(r => (
+          {dynamicRooms.map(r => (
             <span key={r} style={{ ...s.tag, ...(occupiedRooms.includes(r) ? s.tagActive : {}) }}
               onClick={() => toggleRoom(r)}>
               {r}
