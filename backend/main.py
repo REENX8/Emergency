@@ -1,11 +1,15 @@
 """
 main.py — FastAPI server for the Building Evacuation Simulation
 
-Endpoints:
+Endpoints (legacy, single hardcoded building):
   GET  /building          → full graph (nodes + edges) for Cytoscape.js
   POST /evacuate          → run pathfinding under dynamic conditions
   GET  /weather           → current weather from Thai Met Dept API
   GET  /health            → liveness check
+
+Multi-building endpoints (database-backed):
+  /buildings/*            → see routers/buildings.py
+  /buildings/{id}/incidents/* → see routers/incidents.py
 
 Run with:
   uvicorn main:app --reload --port 8000
@@ -13,12 +17,15 @@ Run with:
 
 import copy
 import logging
+import os
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from database import init_db
 from graph_builder import (
     build_evacuation_graph,
     get_exits,
@@ -27,6 +34,8 @@ from graph_builder import (
 )
 from pathfinding import find_all_exit_routes, compare_algorithms, estimate_evacuation_time
 from weather import fetch_weather, compute_smoke_spread
+from routers import buildings as buildings_router
+from routers import incidents as incidents_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,7 +43,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Building Evacuation Simulation API",
     description="Graph-based evacuation routing with dynamic fire/smoke/crowd conditions",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -45,8 +54,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve uploaded floor plan images
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+# Include routers
+app.include_router(buildings_router.router)
+app.include_router(incidents_router.router)
+
+# Initialise database tables on startup
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+
 # ---------------------------------------------------------------------------
-# Request / Response models
+# Request / Response models (legacy single-building endpoints)
 # ---------------------------------------------------------------------------
 
 class CrowdDensity(BaseModel):
@@ -106,7 +130,7 @@ class EvacuateResponse(BaseModel):
     removed_exits: list[str]
     weather: dict
     evacuation_estimate: Optional[dict]
-    graph_state: dict   # nodes + edges for Cytoscape re-render
+    graph_state: dict
 
 
 # ---------------------------------------------------------------------------
@@ -114,18 +138,15 @@ class EvacuateResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 def _graph_to_cytoscape(G) -> dict:
-    """
-    Convert a NetworkX graph to Cytoscape.js elements format.
-    Returns {"nodes": [...], "edges": [...]}
-    """
+    """Convert a NetworkX graph to Cytoscape.js elements format."""
     nodes = []
     for node_id, data in G.nodes(data=True):
         nodes.append({
             "data": {
-                "id": node_id,
-                "label": data.get("label", node_id),
-                "type": data.get("type", "room"),
-                "floor": data.get("floor", 1),
+                "id":       node_id,
+                "label":    data.get("label", node_id),
+                "type":     data.get("type", "room"),
+                "floor":    data.get("floor", 1),
                 "capacity": data.get("capacity", 0),
             },
             "position": {"x": data.get("x", 0), "y": data.get("y", 0)},
@@ -141,15 +162,15 @@ def _graph_to_cytoscape(G) -> dict:
         smoke = data.get("smoke_blocked", False)
         edges.append({
             "data": {
-                "id": f"{u}__{v}",
-                "source": u,
-                "target": v,
-                "weight": round(data.get("weight", 0), 2),
-                "distance": data.get("distance", 0),
-                "width": data.get("width", 0),
+                "id":           f"{u}__{v}",
+                "source":       u,
+                "target":       v,
+                "weight":       round(data.get("weight", 0), 2),
+                "distance":     data.get("distance", 0),
+                "width":        data.get("width", 0),
                 "crowd_density": round(data.get("crowd_density", 0), 2),
                 "smoke_blocked": smoke,
-                "is_stair": data.get("is_stair", False),
+                "is_stair":     data.get("is_stair", False),
             }
         })
 
@@ -157,7 +178,7 @@ def _graph_to_cytoscape(G) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Endpoints
+# Legacy endpoints (hardcoded 3-floor building)
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
@@ -186,22 +207,12 @@ async def get_weather():
 @app.post("/evacuate", response_model=EvacuateResponse)
 async def evacuate(req: EvacuateRequest):
     """
-    Run evacuation simulation under dynamic conditions.
-
-    Steps:
-      1. Build base graph with crowd density weights
-      2. Fetch weather (or use manual wind) → compute smoke spread
-      3. Apply smoke (block edges), remove broken exits
-      4. Run primary pathfinding from fire_location to all exits
-      5. Optionally compare both algorithms
-      6. Estimate total evacuation time for occupied rooms
-      7. Return routes + updated graph state for visualisation
+    Run evacuation simulation under dynamic conditions (legacy hardcoded building).
+    For DB-backed multi-building, use POST /buildings/{id}/evacuate instead.
     """
-    # 1. Build graph with crowd density
     crowd_map = {cd.node_id: cd.density for cd in req.crowd_densities}
     G = build_evacuation_graph(crowd_densities=crowd_map)
 
-    # Validate fire location
     if req.fire_location not in G:
         raise HTTPException(
             status_code=400,
@@ -209,36 +220,27 @@ async def evacuate(req: EvacuateRequest):
                    f"Valid nodes: {list(G.nodes())}",
         )
 
-    # Validate blocked_exits and occupied_rooms node IDs
     all_valid_nodes = set(G.nodes())
     for node in req.blocked_exits:
         if node not in all_valid_nodes:
-            raise HTTPException(
-                status_code=400,
-                detail=f"blocked_exits: '{node}' is not a valid node.",
-            )
+            raise HTTPException(400, detail=f"blocked_exits: '{node}' is not a valid node.")
     for node in req.occupied_rooms:
         if node not in all_valid_nodes:
-            raise HTTPException(
-                status_code=400,
-                detail=f"occupied_rooms: '{node}' is not a valid node.",
-            )
+            raise HTTPException(400, detail=f"occupied_rooms: '{node}' is not a valid node.")
 
-    # 2. Weather / wind
     if req.use_weather_wind:
         weather = await fetch_weather()
     else:
         weather = {
-            "wind_speed_ms": req.manual_wind_speed or 0.0,
+            "wind_speed_ms":      req.manual_wind_speed or 0.0,
             "wind_direction_deg": req.manual_wind_direction or 0.0,
-            "temperature_c": None,
-            "humidity_pct": None,
-            "description": "Manual override",
-            "station": "manual",
-            "source": "manual",
+            "temperature_c":      None,
+            "humidity_pct":       None,
+            "description":        "Manual override",
+            "station":            "manual",
+            "source":             "manual",
         }
 
-    # Smoke spread based on wind
     all_nodes_data = dict(G.nodes(data=True))
     all_edges = list(G.edges())
     smoke_edges = compute_smoke_spread(
@@ -250,7 +252,6 @@ async def evacuate(req: EvacuateRequest):
         smoke_radius_m=20.0,
     )
 
-    # 3. Apply conditions to a working copy
     G_sim = copy.deepcopy(G)
     apply_smoke(G_sim, smoke_edges)
 
@@ -263,22 +264,18 @@ async def evacuate(req: EvacuateRequest):
     if not exits:
         raise HTTPException(status_code=400, detail="All exits are blocked — evacuation impossible.")
 
-    # 4. Primary pathfinding
     primary_routes = find_all_exit_routes(G_sim, req.fire_location, exits, req.algorithm)
 
-    # 5. Algorithm comparison
     comparison = None
     if req.compare_algorithms:
         comparison = compare_algorithms(G_sim, req.fire_location, exits)
 
-    # 6. Evacuation time estimate
     evac_estimate = None
     if req.occupied_rooms:
         evac_estimate = estimate_evacuation_time(
             G_sim, req.occupied_rooms, exits, req.algorithm
         )
 
-    # 7. Build response
     smoke_edge_list = [[u, v] for u, v in smoke_edges]
 
     return EvacuateResponse(
@@ -292,10 +289,6 @@ async def evacuate(req: EvacuateRequest):
         graph_state=_graph_to_cytoscape(G_sim),
     )
 
-
-# ---------------------------------------------------------------------------
-# Dev entrypoint
-# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     import uvicorn
