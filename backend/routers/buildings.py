@@ -50,27 +50,18 @@ def list_buildings(db: Session = Depends(get_db)):
     return db.query(Building).order_by(Building.created_at.desc()).all()
 
 
-@router.get("/{building_id}", response_model=BuildingResponse)
-def get_building(building_id: int, db: Session = Depends(get_db)):
-    b = db.get(Building, building_id)
-    if not b:
-        raise HTTPException(404, detail="Building not found")
-    return b
-
-
+# NOTE: /import must be registered before /{building_id} so FastAPI matches
+# the literal path first instead of treating "import" as a building_id.
 @router.post("/import", response_model=BuildingImportResponse, status_code=201)
 def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db)):
-    """
-    Create a new building with all nodes and edges from a single JSON payload.
-    Useful for seeding demo data or bulk import from external tools.
-    """
+    """Create a building + all nodes/edges from a single JSON payload."""
     building = Building(
         name=payload.name,
         address=payload.address,
         description=payload.description,
     )
     db.add(building)
-    db.flush()  # get building.id before inserting children
+    db.flush()
 
     node_keys: set[str] = set()
     for n in payload.nodes:
@@ -80,7 +71,7 @@ def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db
         node_keys.add(n.node_key)
         db.add(Node(building_id=building.id, **n.model_dump()))
 
-    db.flush()  # ensure nodes exist for FK references in edges
+    db.flush()
 
     for e in payload.edges:
         for key in (e.u_key, e.v_key):
@@ -92,6 +83,14 @@ def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db
     db.commit()
     db.refresh(building)
     return {**building.__dict__, "nodes_created": len(payload.nodes), "edges_created": len(payload.edges)}
+
+
+@router.get("/{building_id}", response_model=BuildingResponse)
+def get_building(building_id: int, db: Session = Depends(get_db)):
+    b = db.get(Building, building_id)
+    if not b:
+        raise HTTPException(404, detail="Building not found")
+    return b
 
 
 @router.delete("/{building_id}", status_code=204)
