@@ -9,8 +9,6 @@ const NODE_COLORS = {
   exit:     '#16a34a',
 };
 
-const FLOOR_Y_OFFSETS = { 1: 0, 2: 0, 3: 0 }; // graph_builder already encodes Y
-
 const STYLESHEET = [
   {
     selector: 'node',
@@ -148,8 +146,26 @@ export default function BuildingMap({ elements, fireNode, smokeEdges, selectedPa
 
   const layout = { name: 'preset' };
 
+  // Floor label Y positions match graph_builder.py node y coordinates
+  const FLOOR_LABELS = [
+    { label: 'Floor 1', y: '27%' },
+    { label: 'Floor 2', y: '57%' },
+    { label: 'Floor 3', y: '83%' },
+  ];
+
   return (
     <div style={{ flex: 1, position: 'relative', background: '#0f172a' }}>
+      {/* Floor labels */}
+      {FLOOR_LABELS.map(({ label, y }) => (
+        <div key={label} style={{
+          position: 'absolute', left: 12, top: y, zIndex: 10,
+          background: '#1e293b', border: '1px solid #334155',
+          borderRadius: 4, padding: '2px 8px',
+          fontSize: 11, color: '#475569', fontWeight: 600, letterSpacing: '0.05em',
+        }}>
+          {label}
+        </div>
+      ))}
       {/* Floor legend */}
       <div style={{
         position: 'absolute', top: 12, right: 12, background: '#1e293b',

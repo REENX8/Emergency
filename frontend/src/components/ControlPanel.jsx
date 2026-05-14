@@ -130,15 +130,25 @@ export default function ControlPanel({ onEvacuate, loading, weather }) {
       {/* Crowd density */}
       <div style={s.section}>
         <div style={s.label}>Crowd Density</div>
-        {['c1','c2','c3'].map(node => (
-          <div key={node} style={s.sliderRow}>
-            <div style={s.sliderLabel}>
-              <span>{node}</span>
-              <span>{Math.round((crowdDensities[node] || 0) * 100)}%</span>
-            </div>
-            <input type="range" min={0} max={1} step={0.05} style={s.slider}
-              value={crowdDensities[node] || 0}
-              onChange={e => setCrowdDensities(prev => ({ ...prev, [node]: parseFloat(e.target.value) }))} />
+        {[
+          { group: 'Corridors', nodes: ['c1','c2','c3'] },
+          { group: 'Floor 1 Rooms', nodes: ['r101','r102','r103'] },
+          { group: 'Floor 2 Rooms', nodes: ['r201','r202','r203'] },
+          { group: 'Floor 3 Rooms', nodes: ['r301','r302','r303'] },
+        ].map(({ group, nodes }) => (
+          <div key={group} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>{group}</div>
+            {nodes.map(node => (
+              <div key={node} style={s.sliderRow}>
+                <div style={s.sliderLabel}>
+                  <span>{node}</span>
+                  <span>{Math.round((crowdDensities[node] || 0) * 100)}%</span>
+                </div>
+                <input type="range" min={0} max={1} step={0.05} style={s.slider}
+                  value={crowdDensities[node] || 0}
+                  onChange={e => setCrowdDensities(prev => ({ ...prev, [node]: parseFloat(e.target.value) }))} />
+              </div>
+            ))}
           </div>
         ))}
       </div>

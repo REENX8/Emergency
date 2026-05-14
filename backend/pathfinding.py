@@ -15,6 +15,7 @@ Both return the same path; A* is usually faster to compute in practice.
 
 import heapq
 import math
+import time
 import networkx as nx
 from typing import Optional
 
@@ -180,14 +181,24 @@ def compare_algorithms(
     G: nx.Graph,
     source: str,
     exits: list[str],
-) -> dict[str, list[dict]]:
+) -> dict:
     """
     Run both algorithms and return results keyed by algorithm name.
+    Includes wall-clock execution time in milliseconds for each algorithm.
     Used for the before/after comparison table in the frontend.
     """
+    t0 = time.perf_counter()
+    dijkstra_routes = find_all_exit_routes(G, source, exits, "dijkstra")
+    dijkstra_ms = round((time.perf_counter() - t0) * 1000, 3)
+
+    t0 = time.perf_counter()
+    astar_routes = find_all_exit_routes(G, source, exits, "astar")
+    astar_ms = round((time.perf_counter() - t0) * 1000, 3)
+
     return {
-        "dijkstra": find_all_exit_routes(G, source, exits, "dijkstra"),
-        "astar":    find_all_exit_routes(G, source, exits, "astar"),
+        "dijkstra": dijkstra_routes,
+        "astar":    astar_routes,
+        "timing_ms": {"dijkstra": dijkstra_ms, "astar": astar_ms},
     }
 
 

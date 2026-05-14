@@ -12,7 +12,6 @@ Run with:
 """
 
 import copy
-import asyncio
 import logging
 from typing import Optional
 
@@ -25,7 +24,6 @@ from graph_builder import (
     get_exits,
     apply_smoke,
     remove_node_safe,
-    update_crowd_density,
 )
 from pathfinding import find_all_exit_routes, compare_algorithms, estimate_evacuation_time
 from weather import fetch_weather, compute_smoke_spread
@@ -210,6 +208,21 @@ async def evacuate(req: EvacuateRequest):
             detail=f"fire_location '{req.fire_location}' is not a valid node. "
                    f"Valid nodes: {list(G.nodes())}",
         )
+
+    # Validate blocked_exits and occupied_rooms node IDs
+    all_valid_nodes = set(G.nodes())
+    for node in req.blocked_exits:
+        if node not in all_valid_nodes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"blocked_exits: '{node}' is not a valid node.",
+            )
+    for node in req.occupied_rooms:
+        if node not in all_valid_nodes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"occupied_rooms: '{node}' is not a valid node.",
+            )
 
     # 2. Weather / wind
     if req.use_weather_wind:

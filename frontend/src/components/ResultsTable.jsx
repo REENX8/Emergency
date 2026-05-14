@@ -64,7 +64,7 @@ export default function ResultsTable({ result, onSelectPath }) {
         onSelectPath?.(best.path);
       }
     }
-  }, [result]);
+  }, [result, onSelectPath]);
 
   if (!result) return null;
 
@@ -131,36 +131,46 @@ export default function ResultsTable({ result, onSelectPath }) {
       )}
 
       {activeTab === 'compare' && result.comparison && (
-        <table style={s.table}>
-          <thead>
-            <tr>
-              <th style={s.th}>Exit</th>
-              <th style={s.th}>Dijkstra (s)</th>
-              <th style={s.th}>A* (s)</th>
-              <th style={s.th}>Δ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dijkstraRoutes.map((dr, i) => {
-              const ar = astarRoutes.find(r => r.exit === dr.exit);
-              const delta = dr.cost_seconds != null && ar?.cost_seconds != null
-                ? (dr.cost_seconds - ar.cost_seconds).toFixed(2)
-                : '—';
-              return (
-                <tr key={dr.exit} style={{ cursor: 'pointer' }} onClick={() => handleSelect(dr)}>
-                  <td style={s.td}>{dr.exit}</td>
-                  <td style={s.td}>
-                    {dr.reachable ? `${dr.cost_seconds}s` : <span style={{ color: '#f87171' }}>✗</span>}
-                  </td>
-                  <td style={s.td}>
-                    {ar?.reachable ? `${ar.cost_seconds}s` : <span style={{ color: '#f87171' }}>✗</span>}
-                  </td>
-                  <td style={s.td}>{delta}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div>
+          {result.comparison.timing_ms && (
+            <div style={{ ...s.evac, marginBottom: 8 }}>
+              <span style={{ color: '#94a3b8' }}>⏱ Compute time — </span>
+              <span style={{ color: '#60a5fa' }}>Dijkstra: {result.comparison.timing_ms.dijkstra} ms</span>
+              <span style={{ color: '#94a3b8' }}> · </span>
+              <span style={{ color: '#a78bfa' }}>A*: {result.comparison.timing_ms.astar} ms</span>
+            </div>
+          )}
+          <table style={s.table}>
+            <thead>
+              <tr>
+                <th style={s.th}>Exit</th>
+                <th style={s.th}>Dijkstra (s)</th>
+                <th style={s.th}>A* (s)</th>
+                <th style={s.th}>Δ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dijkstraRoutes.map((dr) => {
+                const ar = astarRoutes.find(r => r.exit === dr.exit);
+                const delta = dr.cost_seconds != null && ar?.cost_seconds != null
+                  ? (dr.cost_seconds - ar.cost_seconds).toFixed(2)
+                  : '—';
+                return (
+                  <tr key={dr.exit} style={{ cursor: 'pointer' }} onClick={() => handleSelect(dr)}>
+                    <td style={s.td}>{dr.exit}</td>
+                    <td style={s.td}>
+                      {dr.reachable ? `${dr.cost_seconds}s` : <span style={{ color: '#f87171' }}>✗</span>}
+                    </td>
+                    <td style={s.td}>
+                      {ar?.reachable ? `${ar.cost_seconds}s` : <span style={{ color: '#f87171' }}>✗</span>}
+                    </td>
+                    <td style={s.td}>{delta}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {activeTab === 'evac' && evac && (
