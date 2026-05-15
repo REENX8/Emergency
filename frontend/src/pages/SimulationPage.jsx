@@ -74,9 +74,7 @@ export default function SimulationPage() {
           `${API}/buildings/${buildingId}/evacuate/compare`,
           {
             fire_location:         params.fire_location,
-            crowd_densities:       (params.crowd_densities || []).map(cd => ({
-              node_key: cd.node_id || cd.node_key, density: cd.density,
-            })),
+            crowd_densities:       params.crowd_densities || [],
             use_weather_wind:      params.use_weather_wind,
             manual_wind_direction: params.manual_wind_direction,
             manual_wind_speed:     params.manual_wind_speed,

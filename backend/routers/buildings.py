@@ -308,10 +308,6 @@ def get_graph(building_id: int, db: Session = Depends(get_db)):
 # Evacuation simulation
 # ---------------------------------------------------------------------------
 
-class EvacuateBuildingRequest:
-    pass
-
-
 from pydantic import BaseModel, Field as PField
 
 class CrowdDensityItem(BaseModel):

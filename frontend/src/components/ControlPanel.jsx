@@ -91,7 +91,7 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
       use_weather_wind: useWeather,
       manual_wind_direction: manualWind,
       manual_wind_speed: manualWindSpeed,
-      crowd_densities: Object.entries(crowdDensities).map(([node_id, density]) => ({ node_id, density })),
+      crowd_densities: Object.entries(crowdDensities).map(([node_key, density]) => ({ node_key, density })),
       compare_algorithms: compareAlgo,
       occupied_rooms: occupiedRooms,
     });
