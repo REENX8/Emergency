@@ -5,11 +5,12 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 
-import BuildingMap    from '../components/BuildingMap';
-import ControlPanel   from '../components/ControlPanel';
-import ResultsTable   from '../components/ResultsTable';
-import IncidentPanel  from '../components/IncidentPanel';
-import AnalysisPanel  from '../components/AnalysisPanel';
+import BuildingMap     from '../components/BuildingMap';
+import ControlPanel    from '../components/ControlPanel';
+import ResultsTable    from '../components/ResultsTable';
+import IncidentPanel   from '../components/IncidentPanel';
+import AnalysisPanel   from '../components/AnalysisPanel';
+import BuildingSelector from '../components/BuildingSelector';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -201,6 +202,8 @@ export default function SimulationPage() {
           🚨 {building.name}
         </span>
 
+        <BuildingSelector currentId={buildingId} />
+
         <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
           {['dijkstra', 'astar', 'compare'].map(a => (
             <button key={a} onClick={() => setAlgorithm(a)} style={{
@@ -310,10 +313,10 @@ export default function SimulationPage() {
             paddingLeft: 14, paddingTop: 8, background: '#0f172a',
           }}>
             <button style={tabStyle(tab === TAB.results)} onClick={() => setTab(TAB.results)}>
-              📋 Results
+              📋 ผลลัพธ์
             </button>
             <button style={tabStyle(tab === TAB.analysis)} onClick={() => setTab(TAB.analysis)}>
-              📊 Analysis
+              📊 วิเคราะห์
             </button>
           </div>
 

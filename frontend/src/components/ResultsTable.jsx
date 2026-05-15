@@ -68,23 +68,23 @@ export default function ResultsTable({ result, onSelectPath }) {
   const evac           = result.evacuation_estimate;
 
   const tabs = [
-    { key: 'primary', label: `${primaryRoutes[0]?.algorithm?.toUpperCase() || 'Primary'} Routes` },
-    ...(result.comparison ? [{ key: 'compare', label: 'Algorithm Comparison' }] : []),
-    ...(evac ? [{ key: 'evac', label: 'Evac Estimate' }] : []),
+    { key: 'primary', label: `เส้นทาง ${primaryRoutes[0]?.algorithm?.toUpperCase() || 'หลัก'}` },
+    ...(result.comparison ? [{ key: 'compare', label: 'เปรียบเทียบอัลกอริทึม' }] : []),
+    ...(evac ? [{ key: 'evac', label: 'ประมาณเวลาอพยพ' }] : []),
   ];
 
   return (
     <div style={s.container}>
       <div style={s.header}>
-        <span>Simulation Results</span>
+        <span>ผลการจำลอง</span>
         {result.smoke_blocked_edges?.length > 0 && (
           <span style={{ ...s.badge, background: '#422006', color: '#fbbf24' }}>
-            💨 {result.smoke_blocked_edges.length} edges smoke-blocked
+            💨 มี {result.smoke_blocked_edges.length} เส้นถูกควันปิดกั้น
           </span>
         )}
         {result.removed_exits?.length > 0 && (
           <span style={{ ...s.badge, background: '#450a0a', color: '#f87171' }}>
-            ✗ {result.removed_exits.join(', ')} removed
+            ✗ ปิดทางออก {result.removed_exits.join(', ')}
           </span>
         )}
       </div>
@@ -104,11 +104,11 @@ export default function ResultsTable({ result, onSelectPath }) {
         <table style={s.table}>
           <thead>
             <tr>
-              <th style={s.th}>Exit</th>
-              <th style={s.th}>Time</th>
-              <th style={s.th}>Path</th>
-              <th style={s.th}>Hops</th>
-              {hasNodesVisited && <th style={s.th}>Nodes visited</th>}
+              <th style={s.th}>ทางออก</th>
+              <th style={s.th}>เวลา</th>
+              <th style={s.th}>เส้นทาง</th>
+              <th style={s.th}>จำนวนช่วง</th>
+              {hasNodesVisited && <th style={s.th}>node ที่สำรวจ</th>}
             </tr>
           </thead>
           <tbody>
@@ -136,22 +136,22 @@ export default function ResultsTable({ result, onSelectPath }) {
             </div>
             {nodesVisited.dijkstra != null && nodesVisited.astar != null && (
               <div style={s.statBox}>
-                A* explored{' '}
+                A* สำรวจน้อยกว่า{' '}
                 <strong style={{ color: '#4ade80' }}>
                   {Math.round((1 - nodesVisited.astar / Math.max(nodesVisited.dijkstra, 1)) * 100)}%
-                </strong>{' '}fewer nodes
+                </strong>
               </div>
             )}
           </div>
           <table style={s.table}>
             <thead>
               <tr>
-                <th style={s.th}>Exit</th>
-                <th style={{ ...s.th, color: '#60a5fa' }}>Dijkstra time</th>
+                <th style={s.th}>ทางออก</th>
+                <th style={{ ...s.th, color: '#60a5fa' }}>เวลา Dijkstra</th>
                 <th style={{ ...s.th, color: '#60a5fa' }}>D nodes</th>
-                <th style={{ ...s.th, color: '#a78bfa' }}>A* time</th>
+                <th style={{ ...s.th, color: '#a78bfa' }}>เวลา A*</th>
                 <th style={{ ...s.th, color: '#a78bfa' }}>A* nodes</th>
-                <th style={s.th}>Δ time</th>
+                <th style={s.th}>Δ เวลา</th>
               </tr>
             </thead>
             <tbody>
@@ -185,20 +185,20 @@ export default function ResultsTable({ result, onSelectPath }) {
         <div>
           <div style={s.evac}>
             <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: 15 }}>
-              ⏱ Overall Evacuation Time: {evac.overall_seconds}s
-              ({(evac.overall_seconds / 60).toFixed(1)} min)
+              ⏱ เวลาอพยพรวม: {evac.overall_seconds} วินาที
+              ({(evac.overall_seconds / 60).toFixed(1)} นาที)
             </div>
             <div style={{ color: '#94a3b8', marginTop: 4, fontSize: 11 }}>
-              Algorithm: {evac.algorithm} · Worst-case (last person out)
+              อัลกอริทึม: {evac.algorithm} · กรณีคนสุดท้ายที่ออกได้
             </div>
           </div>
           <table style={s.table}>
             <thead>
               <tr>
-                <th style={s.th}>Room</th>
-                <th style={s.th}>Best Exit</th>
-                <th style={s.th}>Time (s)</th>
-                <th style={s.th}>Path hops</th>
+                <th style={s.th}>ห้อง</th>
+                <th style={s.th}>ทางออกที่ดีที่สุด</th>
+                <th style={s.th}>เวลา (วินาที)</th>
+                <th style={s.th}>จำนวนช่วง</th>
               </tr>
             </thead>
             <tbody>

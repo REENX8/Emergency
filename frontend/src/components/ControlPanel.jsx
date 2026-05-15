@@ -100,13 +100,15 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
   return (
     <div style={s.panel}>
       <div>
-        <div style={s.title}>🏢 Evacuation Sim</div>
-        <div style={{ fontSize: 12, color: '#64748b' }}>3-floor building · 21 nodes · NetworkX</div>
+        <div style={s.title}>🏢 ระบบจำลองการอพยพ</div>
+        <div style={{ fontSize: 12, color: '#64748b' }}>
+          {dynamicNodes.length} จุด · NetworkX · Dijkstra/A*
+        </div>
       </div>
 
       {/* Fire location */}
       <div style={s.section}>
-        <div style={s.label}>Fire Location</div>
+        <div style={s.label}>จุดเกิดเหตุไฟไหม้</div>
         <select style={s.select} value={fireLocation} onChange={e => setFireLocation(e.target.value)}>
           {dynamicNodes.map(n => <option key={n} value={n}>{n}</option>)}
         </select>
@@ -114,21 +116,21 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
 
       {/* Algorithm */}
       <div style={s.section}>
-        <div style={s.label}>Primary Algorithm</div>
+        <div style={s.label}>อัลกอริทึมหลัก</div>
         <select style={s.select} value={algorithm} onChange={e => setAlgorithm(e.target.value)}>
-          <option value="dijkstra">Dijkstra (guaranteed optimal)</option>
-          <option value="astar">A* (heuristic-guided)</option>
+          <option value="dijkstra">Dijkstra (รับประกันสั้นที่สุด)</option>
+          <option value="astar">A* (ใช้ heuristic ช่วยค้น)</option>
         </select>
         <div style={{ ...s.toggle, marginTop: 10 }}>
           <input type="checkbox" style={s.checkbox} checked={compareAlgo}
             onChange={e => setCompareAlgo(e.target.checked)} id="cmpAlgo" />
-          <label htmlFor="cmpAlgo">Show comparison table</label>
+          <label htmlFor="cmpAlgo">แสดงตารางเปรียบเทียบ</label>
         </div>
       </div>
 
       {/* Blocked exits */}
       <div style={s.section}>
-        <div style={s.label}>Block Exits (simulate damage)</div>
+        <div style={s.label}>ปิดทางออก (จำลองความเสียหาย)</div>
         <div>
           {dynamicExits.map(e => (
             <span key={e} style={{ ...s.tag, ...(blockedExits.includes(e) ? s.tagActive : {}) }}
@@ -141,10 +143,10 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
 
       {/* Crowd density */}
       <div style={s.section}>
-        <div style={s.label}>Crowd Density</div>
+        <div style={s.label}>ความหนาแน่นฝูงชน</div>
         {[
-          { group: 'Corridors', nodes: dynamicCorridors },
-          { group: 'Rooms', nodes: dynamicRooms },
+          { group: 'ทางเดิน', nodes: dynamicCorridors },
+          { group: 'ห้อง',   nodes: dynamicRooms },
         ].filter(g => g.nodes.length > 0).map(({ group, nodes }) => (
           <div key={group} style={{ marginBottom: 10 }}>
             <div style={{ fontSize: 11, color: '#475569', marginBottom: 4 }}>{group}</div>
@@ -165,7 +167,7 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
 
       {/* Occupied rooms */}
       <div style={s.section}>
-        <div style={s.label}>Occupied Rooms (evac time estimate)</div>
+        <div style={s.label}>ห้องที่มีคน (สำหรับประเมินเวลา)</div>
         <div>
           {dynamicRooms.map(r => (
             <span key={r} style={{ ...s.tag, ...(occupiedRooms.includes(r) ? s.tagActive : {}) }}
@@ -178,21 +180,21 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
 
       {/* Weather */}
       <div style={s.section}>
-        <div style={s.label}>Wind / Smoke Spread</div>
+        <div style={s.label}>ลม / การลามของควัน</div>
         <div style={s.toggle}>
           <input type="checkbox" style={s.checkbox} checked={useWeather}
             onChange={e => setUseWeather(e.target.checked)} id="useWx" />
-          <label htmlFor="useWx">Live TMD weather API</label>
+          <label htmlFor="useWx">ใช้ข้อมูลจริงจาก TMD</label>
         </div>
         {!useWeather && (
           <div style={{ marginTop: 10 }}>
             <div style={s.sliderRow}>
-              <div style={s.sliderLabel}><span>Direction</span><span>{manualWind}°</span></div>
+              <div style={s.sliderLabel}><span>ทิศทางลม</span><span>{manualWind}°</span></div>
               <input type="range" min={0} max={359} step={1} style={s.slider}
                 value={manualWind} onChange={e => setManualWind(Number(e.target.value))} />
             </div>
             <div style={s.sliderRow}>
-              <div style={s.sliderLabel}><span>Speed</span><span>{manualWindSpeed} m/s</span></div>
+              <div style={s.sliderLabel}><span>ความเร็วลม</span><span>{manualWindSpeed} m/s</span></div>
               <input type="range" min={0} max={20} step={0.5} style={s.slider}
                 value={manualWindSpeed} onChange={e => setManualWindSpeed(Number(e.target.value))} />
             </div>
@@ -200,9 +202,9 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
         )}
         {weather && (
           <div style={{ ...s.weatherBox, marginTop: 10 }}>
-            <div>💨 Wind: {weather.wind_speed_ms} m/s @ {weather.wind_direction_deg}°</div>
-            <div>🌡️ Temp: {weather.temperature_c}°C · RH: {weather.humidity_pct}%</div>
-            <div>📡 Source: {weather.source} · {weather.station}</div>
+            <div>💨 ลม: {weather.wind_speed_ms} m/s ทิศ {weather.wind_direction_deg}°</div>
+            <div>🌡️ อุณหภูมิ: {weather.temperature_c}°C · RH: {weather.humidity_pct}%</div>
+            <div>📡 แหล่งข้อมูล: {weather.source} · สถานี {weather.station}</div>
             {weather.description && <div>☁️ {weather.description}</div>}
           </div>
         )}
@@ -213,7 +215,7 @@ export default function ControlPanel({ onEvacuate, loading, weather, nodes: dbNo
         onClick={handleSubmit}
         disabled={loading}
       >
-        {loading ? 'Simulating…' : '🚨 Run Evacuation'}
+        {loading ? 'กำลังจำลอง…' : '🚨 เริ่มจำลองอพยพ'}
       </button>
     </div>
   );

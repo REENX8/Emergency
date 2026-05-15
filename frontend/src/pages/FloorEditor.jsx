@@ -3,6 +3,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import CytoscapeComponent from 'react-cytoscapejs';
 import axios from 'axios';
 
+import ConfirmModal from '../components/ConfirmModal';
+import Toast from '../components/Toast';
+
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 const NODE_COLORS = { room: '#1d4ed8', corridor: '#0369a1', stair: '#7c3aed', exit: '#16a34a' };
@@ -86,6 +89,12 @@ export default function FloorEditor() {
   const [clickPos, setClickPos]     = useState({ x: 0, y: 0 });
   const [form, setForm]             = useState({});
   const [error, setError]           = useState(null);
+  const [confirmState, setConfirmState] = useState(null); // { message, onConfirm }
+  const [toast, setToast]           = useState(null);     // { kind, message }
+
+  const showToast = useCallback((kind, message) => setToast({ kind, message }), []);
+  const askConfirm = useCallback((message, onConfirm, opts = {}) =>
+    setConfirmState({ message, onConfirm, ...opts }), []);
   const cyRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -171,10 +180,15 @@ export default function FloorEditor() {
     const onEdgeTap = (evt) => {
       if (!editMode) return;
       const edgeId = evt.target.data('dbId');
-      if (window.confirm('ลบ edge นี้?')) {
-        axios.delete(`${API}/buildings/${buildingId}/edges/${edgeId}`)
-          .then(load).catch(() => {});
-      }
+      askConfirm('ลบเส้นเชื่อมนี้ใช่หรือไม่?', async () => {
+        try {
+          await axios.delete(`${API}/buildings/${buildingId}/edges/${edgeId}`);
+          load();
+          showToast('success', 'ลบเส้นเชื่อมแล้ว');
+        } catch (e) {
+          showToast('error', e.response?.data?.detail || 'ลบไม่สำเร็จ');
+        }
+      }, { destructive: true });
     };
 
     cy.on('tap', onTap);
@@ -185,7 +199,7 @@ export default function FloorEditor() {
       cy.off('tap', 'node', onNodeTap);
       cy.off('tap', 'edge', onEdgeTap);
     };
-  }, [editMode, pendingEdge, nodes, buildingId, load, activeFloor]);
+  }, [editMode, pendingEdge, nodes, buildingId, load, activeFloor, askConfirm, showToast]);
 
   // Save node positions when dragged
   useEffect(() => {
@@ -226,10 +240,22 @@ export default function FloorEditor() {
     } catch (e) { setError(e.response?.data?.detail || 'เกิดข้อผิดพลาด'); }
   };
 
-  const deleteNode = async () => {
-    if (!window.confirm(`ลบ node "${form.node_key}"? edges ที่เชื่อมต่อจะถูกลบด้วย`)) return;
-    await axios.delete(`${API}/buildings/${buildingId}/nodes/${form.node_key}`);
-    setModal(null); load();
+  const deleteNode = () => {
+    const key = form.node_key;
+    askConfirm(
+      `ลบ node "${key}"? เส้นเชื่อมที่ต่ออยู่จะถูกลบไปพร้อมกัน`,
+      async () => {
+        try {
+          await axios.delete(`${API}/buildings/${buildingId}/nodes/${key}`);
+          setModal(null);
+          load();
+          showToast('success', `ลบ node ${key} แล้ว`);
+        } catch (e) {
+          showToast('error', e.response?.data?.detail || 'ลบไม่สำเร็จ');
+        }
+      },
+      { destructive: true },
+    );
   };
 
   const submitAddEdge = async () => {
@@ -251,7 +277,7 @@ export default function FloorEditor() {
     try {
       await axios.post(`${API}/buildings/${buildingId}/floors`, fd);
       load();
-    } catch (e) { alert('อัปโหลดล้มเหลว: ' + (e.response?.data?.detail || e.message)); }
+    } catch (e) { showToast('error', 'อัปโหลดล้มเหลว: ' + (e.response?.data?.detail || e.message)); }
   };
 
   const activeFloorData = floors.find(f => f.floor_number === activeFloor);
@@ -442,6 +468,25 @@ export default function FloorEditor() {
           <button onClick={submitAddEdge} style={btn({ background: '#3b82f6', color: '#fff' })}>สร้าง Edge</button>
         </Modal>
       )}
+
+      <ConfirmModal
+        open={confirmState !== null}
+        message={confirmState?.message || ''}
+        destructive={!!confirmState?.destructive}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={() => {
+          const fn = confirmState?.onConfirm;
+          setConfirmState(null);
+          if (fn) fn();
+        }}
+      />
+
+      <Toast
+        open={toast !== null}
+        kind={toast?.kind || 'info'}
+        message={toast?.message || ''}
+        onClose={() => setToast(null)}
+      />
     </div>
   );
 }

@@ -271,7 +271,7 @@ export default function BuildingMap({
           position: 'absolute', left: 12, top: y, zIndex: 10,
           background: '#1e293b', border: '1px solid #334155', borderRadius: 4,
           padding: '2px 8px', fontSize: 11, color: '#475569', fontWeight: 600,
-        }}>{label}</div>
+        }}>{label.replace('Floor', 'ชั้น')}</div>
       ))}
 
       {/* Hint: click to report */}
@@ -292,45 +292,50 @@ export default function BuildingMap({
         borderRadius: 8, padding: '10px 14px', zIndex: 10,
         fontSize: 12, color: '#94a3b8', border: '1px solid #334155',
       }}>
-        {Object.entries(NODE_COLORS).map(([type, color]) => (
+        {[
+          { type: 'room',     label: 'ห้อง' },
+          { type: 'corridor', label: 'ทางเดิน' },
+          { type: 'stair',    label: 'บันได' },
+          { type: 'exit',     label: 'ทางออก' },
+        ].map(({ type, label }) => (
           <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: color }} />
-            {type}
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: NODE_COLORS[type] }} />
+            {label}
           </div>
         ))}
         <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#f59e0b', borderRadius: 2 }} /> selected
+            <div style={{ width: 12, height: 3, background: '#f59e0b', borderRadius: 2 }} /> เส้นทางที่เลือก
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#22c55e', borderRadius: 2 }} /> best route
+            <div style={{ width: 12, height: 3, background: '#22c55e', borderRadius: 2 }} /> เส้นทางดีที่สุด
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#a78bfa', borderRadius: 2, borderTop: '1px dashed #a78bfa' }} /> A* route
+            <div style={{ width: 12, height: 3, background: '#a78bfa', borderRadius: 2 }} /> เส้นทาง A*
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#f97316', borderRadius: 2 }} /> bottleneck
+            <div style={{ width: 12, height: 3, background: '#f97316', borderRadius: 2 }} /> คอขวด
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 2 }} /> fire
+            <div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 2 }} /> ไฟ
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#f97316' }} /> ไฟเพิ่งถึง
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#fbbf24' }} /> ไฟเพิ่งถึง
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#dc2626' }} /> ไฟลุกแรง
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#7f1d1d' }} /> ไฟลุกแรง
           </div>
         </div>
 
         {/* Smoke level legend */}
         {smokeAnnotations.length > 0 && (
           <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6 }}>
-            <div style={{ marginBottom: 4, color: '#64748b', fontSize: 11 }}>Smoke level</div>
+            <div style={{ marginBottom: 4, color: '#64748b', fontSize: 11 }}>ระดับควัน</div>
             {[
-              { label: 'blocked', color: '#7f1d1d' },
-              { label: 'high',    color: '#ef4444' },
-              { label: 'medium',  color: '#b45309' },
-              { label: 'low',     color: '#78716c' },
+              { label: 'ปิดกั้น',    color: '#7f1d1d' },
+              { label: 'หนา',       color: '#ef4444' },
+              { label: 'ปานกลาง',   color: '#b45309' },
+              { label: 'บาง',       color: '#78716c' },
             ].map(({ label, color }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                 <div style={{ width: 12, height: 3, background: color, borderRadius: 2 }} /> {label}
@@ -355,7 +360,7 @@ export default function BuildingMap({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           height: '100%', color: '#475569', fontSize: 16,
         }}>
-          Configure conditions and click <strong style={{ marginLeft: 6 }}>Run Evacuation</strong>
+          กำหนดเงื่อนไขแล้วกด <strong style={{ marginLeft: 6 }}>เริ่มจำลองอพยพ</strong>
         </div>
       )}
     </div>
