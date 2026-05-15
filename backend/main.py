@@ -37,6 +37,7 @@ from weather import fetch_weather
 from routers import buildings as buildings_router
 from routers import incidents as incidents_router
 from routers import analysis as analysis_router
+from routers import auth as auth_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -131,6 +132,7 @@ async def _expose_timing_header(request: Request, call_next):
 
 
 # Include routers
+app.include_router(auth_router.router)
 app.include_router(buildings_router.router)
 app.include_router(incidents_router.router)
 app.include_router(analysis_router.router)

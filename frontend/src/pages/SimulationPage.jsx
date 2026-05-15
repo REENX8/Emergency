@@ -11,6 +11,7 @@ import ResultsTable    from '../components/ResultsTable';
 import IncidentPanel   from '../components/IncidentPanel';
 import AnalysisPanel   from '../components/AnalysisPanel';
 import BuildingSelector from '../components/BuildingSelector';
+import AuthBar          from '../components/AuthBar';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -255,6 +256,8 @@ export default function SimulationPage() {
           background: '#334155', border: 'none', borderRadius: 6,
           padding: '5px 12px', color: '#cbd5e1', cursor: 'pointer', fontSize: 13,
         }}>✏️ แก้ไขแปลน</button>
+
+        <AuthBar />
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

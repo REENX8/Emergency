@@ -28,13 +28,42 @@ export const http = axios.create({
   timeout: 30000,
 });
 
-// Capture the backend timing header so the UI can surface it.
-let lastProcessTimeMs: number | null = null;
-http.interceptors.response.use((resp) => {
-  const v = resp.headers?.['x-process-time-ms'];
-  if (v != null) lastProcessTimeMs = Number(v);
-  return resp;
+const TOKEN_KEY = 'auth_token';
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+// Attach the bearer token to every outgoing request when present.
+http.interceptors.request.use((config) => {
+  const tok = getToken();
+  if (tok) {
+    (config.headers as any).Authorization = `Bearer ${tok}`;
+  }
+  return config;
 });
+
+// Capture the backend timing header so the UI can surface it; on 401
+// expire the local token so guarded screens redirect to login.
+let lastProcessTimeMs: number | null = null;
+http.interceptors.response.use(
+  (resp) => {
+    const v = resp.headers?.['x-process-time-ms'];
+    if (v != null) lastProcessTimeMs = Number(v);
+    return resp;
+  },
+  (error) => {
+    if (error?.response?.status === 401) {
+      setToken(null);
+    }
+    return Promise.reject(error);
+  },
+);
 
 export function getLastProcessTimeMs(): number | null {
   return lastProcessTimeMs;
@@ -94,4 +123,39 @@ export function runFireSpread(
   body: { fire_node: string; use_weather_wind?: boolean },
 ): Promise<AxiosResponse<FireSpreadResponse>> {
   return http.post<FireSpreadResponse>(`/buildings/${id}/fire/spread`, body);
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  created_at: string;
+}
+
+export async function register(email: string, password: string): Promise<AuthUser> {
+  const { data } = await http.post<AuthUser>('/auth/register', { email, password });
+  return data;
+}
+
+export async function login(email: string, password: string): Promise<string> {
+  const { data } = await http.post<{ access_token: string }>('/auth/login', { email, password });
+  setToken(data.access_token);
+  return data.access_token;
+}
+
+export function logout(): void {
+  setToken(null);
+}
+
+export async function me(): Promise<AuthUser | null> {
+  if (!getToken()) return null;
+  try {
+    const { data } = await http.get<AuthUser>('/auth/me');
+    return data;
+  } catch {
+    return null;
+  }
 }
