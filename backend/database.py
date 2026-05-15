@@ -47,7 +47,7 @@ def get_db():
 
 
 def init_db():
-    from models import Building, Floor, Node, Edge, Incident  # noqa: F401
+    from models import Building, Floor, Node, Edge, Incident, User  # noqa: F401
     Base.metadata.create_all(bind=engine)
     # Migrate: add tmd_station_id to existing databases that pre-date this column
     with engine.connect() as conn:
