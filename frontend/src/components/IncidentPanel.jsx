@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import axios from 'axios';
-
-const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+import { http } from '../api/client';
 
 const TYPES = [
   { value: 'fire',  label: '🔥 ไฟไหม้',    color: '#ef4444' },
@@ -39,7 +37,7 @@ export default function IncidentPanel({ buildingId, nodes = [], preselectedNode 
 
   const loadIncidents = useCallback(() => {
     if (!buildingId) return;
-    axios.get(`${API}/buildings/${buildingId}/incidents?active_only=true`)
+    http.get(`/buildings/${buildingId}/incidents?active_only=true`)
       .then(r => setIncidents(r.data))
       .catch(() => {});
   }, [buildingId]);
@@ -49,7 +47,7 @@ export default function IncidentPanel({ buildingId, nodes = [], preselectedNode 
   const report = async () => {
     if (!nodeKey) { setError('กรุณาเลือก node'); return; }
     try {
-      await axios.post(`${API}/buildings/${buildingId}/incidents`, {
+      await http.post(`/buildings/${buildingId}/incidents`, {
         node_key: nodeKey, incident_type: type, severity,
       });
       setError(null);
@@ -61,7 +59,7 @@ export default function IncidentPanel({ buildingId, nodes = [], preselectedNode 
   };
 
   const resolve = async (id) => {
-    await axios.patch(`${API}/buildings/${buildingId}/incidents/${id}`);
+    await http.patch(`/buildings/${buildingId}/incidents/${id}`);
     loadIncidents();
     onIncidentChange?.();
   };
