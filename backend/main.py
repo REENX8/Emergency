@@ -18,18 +18,22 @@ Run with:
 import copy
 import logging
 import os
+import time
+from contextlib import asynccontextmanager
 from typing import Optional
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+import httpx
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from database import init_db
 import storage
+import weather as weather_mod
 from graph_builder import (
     build_evacuation_graph,
     get_exits,
@@ -45,19 +49,56 @@ from routers import analysis as analysis_router
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialise DB tables and a pooled httpx client; close pool on shutdown."""
+    init_db()
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        weather_mod.set_http_client(client)
+        try:
+            yield
+        finally:
+            weather_mod.set_http_client(None)
+
+
 app = FastAPI(
     title="Building Evacuation Simulation API",
     description="Graph-based evacuation routing with dynamic fire/smoke/crowd conditions",
     version="2.0.0",
+    lifespan=lifespan,
 )
 
+# CORS — accept a comma-separated list of allowed origins from env.
+# Defaults to localhost:3000 (CRA dev server) for safety.
+_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
+_allowed_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _timing_middleware(request: Request, call_next):
+    """Attach X-Process-Time-Ms header and log slow requests (>500ms)."""
+    start = time.perf_counter()
+    response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
+    if elapsed_ms > 500:
+        logger.warning(
+            "slow request %s %s took %.1fms",
+            request.method, request.url.path, elapsed_ms,
+        )
+    return response
 
 # Serve uploaded floor plan images (local dev only — Supabase mode uses CDN URLs)
 if not storage.is_supabase_configured():
@@ -69,11 +110,6 @@ if not storage.is_supabase_configured():
 app.include_router(buildings_router.router)
 app.include_router(incidents_router.router)
 app.include_router(analysis_router.router)
-
-# Initialise database tables on startup
-@app.on_event("startup")
-def on_startup():
-    init_db()
 
 
 # ---------------------------------------------------------------------------

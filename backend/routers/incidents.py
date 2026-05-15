@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
+from dynamic_graph import invalidate_graph_cache
 from models import Building, Incident, Node
 from schemas import IncidentCreate, IncidentResponse
 
@@ -64,4 +65,5 @@ def resolve_incident(building_id: int, incident_id: int, db: Session = Depends(g
     incident.is_active = False
     db.commit()
     db.refresh(incident)
+    invalidate_graph_cache(building_id)
     return incident

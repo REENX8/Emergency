@@ -11,7 +11,12 @@ from sqlalchemy.orm import Session
 
 import storage
 from database import get_db
-from dynamic_graph import build_graph_from_db, get_exits_from_db, graph_to_cytoscape
+from dynamic_graph import (
+    build_graph_from_db,
+    get_exits_from_db,
+    graph_to_cytoscape,
+    invalidate_graph_cache,
+)
 from models import Building, Edge, Floor, Node
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from schemas import (
@@ -223,6 +228,7 @@ def update_node(building_id: int, node_key: str, payload: NodeUpdate, db: Sessio
         setattr(node, field, value)
     db.commit()
     db.refresh(node)
+    invalidate_graph_cache(building_id)
     return node
 
 
