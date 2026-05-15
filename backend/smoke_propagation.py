@@ -2,18 +2,18 @@
 smoke_propagation.py — Continuous smoke level model for edge-by-edge propagation.
 
 Formula (per edge e):
-    s(e) = s_fire * exp(-lambda * dist(e, fire_m)) * phi(wind_angle)
+    s(e) = s_fire * exp(-λ * dist(e, fire_m)) * φ(θ_wind)
 
 Where:
     s_fire  = 1.0   (base smoke concentration at fire node)
-    lambda  = 0.15  (exponential decay rate per metre)
+    λ       = 0.15  (exponential decay rate per metre)
     dist(e) = Euclidean distance in metres from fire node to edge midpoint
-    phi     = 1.0 + 0.5 * cos(angle between edge direction and wind direction)
-            → edges aligned with wind get +50% extra smoke; opposite = -50%
+    φ       = 1.0 + 0.5 * cos(angle between edge direction and wind direction)
+            → edges aligned with wind get +50% extra smoke; opposite = −50%
 
-Smoke-modified edge weight formula (replaces calculate_edge_weight):
+Smoke-modified edge weight (R(e) = s(e) fed into weight formula from graph_builder):
     if s(e) >= 0.9:  weight = inf          (impassable — lethal smoke)
-    else:            weight = base_time * (1 + 2 * crowd_density) * (1 + 4 * s(e))
+    else:            weight = d / (v_base × (1 − ρ(e)) × (1 − s(e)))
 
 This model is used by POST /buildings/{id}/smoke/propagate and integrates with
 the main evacuation engine when a fire incident is reported.
@@ -21,6 +21,8 @@ the main evacuation engine when a fire incident is reported.
 
 import math
 import networkx as nx
+
+from graph_builder import calculate_edge_weight
 
 LAMBDA     = 0.15   # exponential decay rate (per metre)
 PX_PER_M   = 6.0    # pixels per metre (matches graph_builder.py)
@@ -60,9 +62,6 @@ def compute_smoke_levels(
     wx = math.sin(toward_rad)    # east component (+x)
     wy = -math.cos(toward_rad)   # north component (screen y flipped)
 
-    # Wind speed amplifies spread: 0 m/s → no extra, 10 m/s → 50% extra
-    speed_factor = 1.0 + wind_speed_ms / 20.0
-
     levels: dict[tuple[str, str], float] = {}
 
     for u, v in G.edges():
@@ -79,8 +78,7 @@ def compute_smoke_levels(
         dist_px = math.hypot(mid_x - fx, mid_y - fy)
         dist_m  = dist_px / PX_PER_M
 
-        # phi: wind alignment factor
-        # edge direction vector
+        # phi: wind alignment factor (from wind direction only)
         ex = vx - ux
         ey = vy - uy
         e_len = math.hypot(ex, ey)
@@ -94,7 +92,7 @@ def compute_smoke_levels(
         phi = 1.0 + 0.5 * cos_angle
 
         # Exponential decay
-        s = S_FIRE * math.exp(-LAMBDA * dist_m / speed_factor) * phi
+        s = S_FIRE * math.exp(-LAMBDA * dist_m) * phi
 
         # Clamp to [0, 1]
         s = max(0.0, min(1.0, s))
@@ -109,7 +107,7 @@ def apply_smoke_levels(G: nx.Graph, smoke_levels: dict[tuple[str, str], float]) 
 
     Formula:
         s >= 0.9 → weight = inf
-        s <  0.9 → weight = base_time * (1 + 2 * crowd_density) * (1 + 4 * s)
+        s <  0.9 → weight = d / (v_base × (1 − ρ) × (1 − s))
 
     Mutates G in place. Call on a copy if you need the original weights.
     The `smoke_level` attribute is stored on each edge for visualisation.
@@ -121,13 +119,15 @@ def apply_smoke_levels(G: nx.Graph, smoke_levels: dict[tuple[str, str], float]) 
         e["smoke_level"] = round(s, 4)
         e["smoke_blocked"] = s >= BLOCK_THR
 
-        base_time = e.get("base_time", e.get("weight", 1.0))
-        crowd     = e.get("crowd_density", 0.0)
-
         if s >= BLOCK_THR:
             e["weight"] = float("inf")
         else:
-            e["weight"] = base_time * (1.0 + 2.0 * crowd) * (1.0 + 4.0 * s)
+            e["weight"] = calculate_edge_weight(
+                e["distance"],
+                e.get("crowd_density", 0.0),
+                s,
+                e.get("is_stair", False),
+            )
 
 
 def smoke_levels_to_cytoscape(smoke_levels: dict[tuple[str, str], float]) -> list[dict]:
