@@ -251,7 +251,30 @@ Emergency/
 
 ---
 
-## Run Locally
+## Quick start (Docker — แนะนำ)
+
+```bash
+docker compose up --build
+# Frontend:  http://localhost:3000
+# Backend:   http://localhost:8000   (Swagger UI: /docs)
+```
+
+Frontend container เป็น nginx + บิ้วล์ของ React มาเสร็จแล้ว, proxy `/api/*`
+ไปที่ backend container ผ่าน Docker network — เปิดเบราว์เซอร์แล้วใช้งานได้
+เลย ไม่ต้องตั้ง `REACT_APP_API_URL`
+
+ตั้งค่า env ภายนอก (เช่นใช้ Supabase แทน SQLite):
+
+```bash
+# backend/.env หรือ shell env
+DATABASE_URL=postgresql://user:pass@db.supabase.co:5432/postgres
+ALLOWED_ORIGINS=https://yourdomain.com,http://localhost:3000
+JWT_SECRET=<random 32+ chars>     # ใช้กับ /auth/* (Phase 8)
+```
+
+---
+
+## Run Locally (ไม่ใช้ Docker)
 
 ```bash
 # Backend
