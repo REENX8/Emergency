@@ -6,7 +6,7 @@
  *   - Max-flow distribution per exit
  *   - Experiment export button
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import axios from 'axios';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';

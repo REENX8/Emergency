@@ -49,8 +49,19 @@ const STYLESHEET = [
   // Compare mode: second algorithm path
   { selector: 'edge.compare-path',     style: { 'line-color': '#a78bfa', width: 3, 'line-style': 'dashed', 'z-index': 12 } },
   { selector: 'node.compare-path',     style: { 'border-color': '#a78bfa', 'border-width': 3 } },
-  { selector: 'node.fire-spread',      style: { 'background-color': '#f97316', 'border-color': '#fed7aa', 'border-width': 4 } },
-  { selector: 'node.fire-spread-hot',  style: { 'background-color': '#dc2626', 'border-color': '#fca5a5', 'border-width': 5 } },
+  // Smooth fire-intensity gradient (0 = just ignited yellow, 1 = fully burning deep red).
+  // Driven by `data('fireIntensity', number)` written via cy.batch() in the effect below.
+  { selector: 'node[fireIntensity]', style: {
+      'background-color': 'mapData(fireIntensity, 0, 1, #fbbf24, #7f1d1d)',
+      'border-color':     'mapData(fireIntensity, 0, 1, #fed7aa, #fca5a5)',
+      'border-width':     'mapData(fireIntensity, 0, 1, 3, 6)',
+  }},
+  // Continuous smoke heatmap on edges (preferred over discrete classes when level is known).
+  { selector: 'edge[smokeIntensity]', style: {
+      'line-color': 'mapData(smokeIntensity, 0, 1, #78716c, #7f1d1d)',
+      'width':      'mapData(smokeIntensity, 0, 1, 2, 4)',
+      'opacity':    'mapData(smokeIntensity, 0, 1, 0.55, 0.95)',
+  }},
 ];
 
 
@@ -72,6 +83,9 @@ export default function BuildingMap({
   fireSpreadTime    = 0,       // current slider time
 }) {
   const cyRef = useRef(null);
+  // Track which nodes were on fire on the previous render so we can tween
+  // newly-ignited ones (instead of snapping every node every frame).
+  const prevIgnitedRef = useRef(new Set());
 
   // Apply all visual classes whenever inputs change
   useEffect(() => {
@@ -83,6 +97,12 @@ export default function BuildingMap({
       'incident-smoke incident-crowd bottleneck maxflow compare-path ' +
       'fire-spread fire-spread-hot'
     );
+    // Clear continuous data attributes for a clean redraw — nodes/edges
+    // that should remain coloured are repopulated below in the same effect.
+    cy.batch(() => {
+      cy.nodes('[fireIntensity]').forEach(n => n.removeData('fireIntensity'));
+      cy.edges('[smokeIntensity]').forEach(e => e.removeData('smokeIntensity'));
+    });
 
     if (fireNode) cy.getElementById(fireNode).addClass('fire');
 
@@ -92,19 +112,24 @@ export default function BuildingMap({
       if (type === 'crowd') cy.getElementById(nid).addClass('incident-crowd');
     });
 
-    // Continuous smoke annotations (new model)
-    smokeAnnotations.forEach(({ source, target, smoke_level, blocked }) => {
-      const getEdge = (u, v) => {
-        const e1 = cy.getElementById(`${u}__${v}`);
-        const e2 = cy.getElementById(`${v}__${u}`);
-        return e1.length ? e1 : e2;
-      };
-      const edge = getEdge(source, target);
-      if (!edge.length) return;
-      if (blocked)               edge.addClass('smoke-blocked');
-      else if (smoke_level > 0.6) edge.addClass('smoke-high');
-      else if (smoke_level > 0.3) edge.addClass('smoke-mid');
-      else if (smoke_level > 0.05) edge.addClass('smoke-low');
+    // Continuous smoke annotations — write smoke_level into edge data so the
+    // `edge[smokeIntensity]` mapData selector renders a smooth gradient.
+    // Blocked edges stay as a discrete dotted-line class for unmistakable
+    // contrast against the gradient.
+    cy.batch(() => {
+      smokeAnnotations.forEach(({ source, target, smoke_level, blocked }) => {
+        const e1 = cy.getElementById(`${source}__${target}`);
+        const e2 = cy.getElementById(`${target}__${source}`);
+        const edge = e1.length ? e1 : e2;
+        if (!edge.length) return;
+        if (blocked) {
+          edge.addClass('smoke-blocked');
+          return;
+        }
+        if (smoke_level > 0.05) {
+          edge.data('smokeIntensity', Math.min(1, smoke_level));
+        }
+      });
     });
 
     // Legacy binary smoke edges (when no smokeAnnotations)
@@ -158,16 +183,34 @@ export default function BuildingMap({
         }
       }
     }
-    // Fire spread nodes: orange (just caught) or red (fully burning)
-    fireSpreadNodes.forEach(nodeId => {
-      const nodeData = fireSpreadData.find(n => n.node === nodeId);
-      const reachTime = nodeData ? nodeData.reach_time : 0;
-      if ((fireSpreadTime - reachTime) > 60) {
-        cy.getElementById(nodeId).addClass('fire-spread-hot');
-      } else {
-        cy.getElementById(nodeId).addClass('fire-spread');
-      }
+    // Fire spread nodes — render as a smooth intensity gradient via mapData.
+    // Intensity ramps from 0 (just ignited) to 1 (fully burning after 60s).
+    // Newly-ignited nodes since the last render get a short tween for an
+    // attention-grabbing "catches fire" cue; nodes already burning just
+    // get their intensity updated in a single batched paint.
+    const currentIgnited = new Set();
+    cy.batch(() => {
+      fireSpreadNodes.forEach(nodeId => {
+        const nodeData = fireSpreadData.find(n => n.node === nodeId);
+        const reachTime = nodeData ? nodeData.reach_time : 0;
+        const intensity = Math.max(0, Math.min(1, (fireSpreadTime - reachTime) / 60));
+        cy.getElementById(nodeId).data('fireIntensity', intensity);
+        currentIgnited.add(nodeId);
+      });
     });
+    // Tween nodes that crossed the ignition threshold since the previous render.
+    const newlyIgnited = [...currentIgnited].filter(id => !prevIgnitedRef.current.has(id));
+    newlyIgnited.forEach(id => {
+      const node = cy.getElementById(id);
+      if (!node.length) return;
+      node.animation({
+        style: { 'border-width': 8 },
+        duration: 250,
+      }).play().promise().then(() => {
+        node.animation({ style: { 'border-width': 4 }, duration: 250 }).play();
+      });
+    });
+    prevIgnitedRef.current = currentIgnited;
   }, [fireNode, smokeEdges, smokeAnnotations, selectedPath, bestPath,
       elements, incidentNodes, bottleneckEdges, maxflowBadges, compareResult,
       fireSpreadNodes, fireSpreadData, fireSpreadTime]);
