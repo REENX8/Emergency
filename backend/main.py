@@ -62,18 +62,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — accept a comma-separated list of allowed origins from env.
-# Defaults to localhost:3000 (CRA dev server) for safety.
-_default_origins = "http://localhost:3000,http://127.0.0.1:3000"
-_allowed_origins = [
-    o.strip()
-    for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",")
-    if o.strip()
-]
+# CORS — set ALLOWED_ORIGINS env var to a comma-separated list of origins.
+# Use "*" (the default) to allow all origins; JWT auth is header-based so
+# allow_credentials must be False when the wildcard is active.
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+_allowed_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+_wildcard = _allowed_origins == ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=True,
+    allow_credentials=not _wildcard,   # credentials=True incompatible with "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
