@@ -1,98 +1,34 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import axios from 'axios';
 
 import BuildingManager from './pages/BuildingManager';
 import FloorEditor     from './pages/FloorEditor';
 import SimulationPage  from './pages/SimulationPage';
-import ControlPanel    from './components/ControlPanel';
-import BuildingMap     from './components/BuildingMap';
-import ResultsTable    from './components/ResultsTable';
-
-const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-/**
- * LegacySimulation — the original single hardcoded building UI.
- * Still accessible at /legacy for backward compatibility.
- */
-function LegacySimulation() {
-  const [building, setBuilding]   = useState(null);
-  const [result, setResult]       = useState(null);
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState(null);
-  const [weather, setWeather]     = useState(null);
-  const [selectedPath, setSelectedPath] = useState(null);
-
-  useEffect(() => {
-    axios.get(`${API}/building`).then(r => setBuilding(r.data.graph)).catch(() => {});
-    axios.get(`${API}/weather`).then(r => setWeather(r.data)).catch(() => {});
-  }, []);
-
-  const runEvacuation = useCallback(async (params) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await axios.post(`${API}/evacuate`, params);
-      setResult(data);
-      setWeather(data.weather);
-      setSelectedPath(null);
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'API error');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const displayGraph = result?.graph_state || building;
-  const fireNode     = result?.fire_location || null;
-  const smokeEdges   = result?.smoke_blocked_edges || [];
-  const bestPath     = result?.primary_routes?.find(r => r.reachable)?.path || null;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      <div style={{
-        background: '#1e293b', borderBottom: '1px solid #334155',
-        padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 16,
-      }}>
-        <span style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
-          🚨 Building Evacuation Simulation (Legacy)
-        </span>
-        <span style={{ fontSize: 12, color: '#64748b' }}>
-          Graph-based · Dijkstra / A* · Dynamic smoke &amp; crowd · TMD Weather
-        </span>
-        {error && (
-          <span style={{ marginLeft: 'auto', color: '#f87171', fontSize: 13, background: '#450a0a', padding: '4px 10px', borderRadius: 6 }}>
-            ⚠ {error}
-          </span>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        <ControlPanel onEvacuate={runEvacuation} loading={loading} weather={weather} />
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          <BuildingMap
-            elements={displayGraph}
-            fireNode={fireNode}
-            smokeEdges={smokeEdges}
-            selectedPath={selectedPath}
-            bestPath={bestPath}
-          />
-          <ResultsTable result={result} onSelectPath={setSelectedPath} />
-        </div>
-      </div>
-    </div>
-  );
-}
+import Login           from './pages/Login';
+import Register        from './pages/Register';
+import RequireAuth     from './components/RequireAuth';
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/"                            element={<BuildingManager />} />
-        <Route path="/buildings/:buildingId/edit"  element={<FloorEditor />} />
+        <Route path="/login"    element={<Login />} />
+        <Route path="/register" element={<Register />} />
+
+        {/* Write-capable screens require auth */}
+        <Route
+          path="/"
+          element={<RequireAuth><BuildingManager /></RequireAuth>}
+        />
+        <Route
+          path="/buildings/:buildingId/edit"
+          element={<RequireAuth><FloorEditor /></RequireAuth>}
+        />
+
+        {/* Read-only simulation stays public */}
         <Route path="/buildings/:buildingId/simulate" element={<SimulationPage />} />
-        <Route path="/legacy"                      element={<LegacySimulation />} />
-        <Route path="*"                            element={<Navigate to="/" replace />} />
+
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );

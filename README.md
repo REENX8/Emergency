@@ -152,14 +152,13 @@ Algorithm: Dijkstra จาก fire source — minimize cumulative `t_spread`
 | `GET` | `/buildings/{id}/analysis` | safety score + bottleneck + max-flow |
 | `POST` | `/buildings/{id}/incidents` | รายงานเหตุการณ์ (fire/smoke/crowd) |
 
-### Legacy Single-Building
+### Meta
 
 | Method | Endpoint | คำอธิบาย |
 |---|---|---|
-| `GET` | `/building` | graph อาคารตัวอย่าง 3 ชั้น |
-| `POST` | `/evacuate` | จำลองการอพยพ (hardcoded building) |
 | `GET` | `/weather` | ข้อมูลสภาพอากาศจาก TMD API |
 | `GET` | `/health` | liveness check |
+| `POST` | `/metrics/web-vitals` | รับ Core Web Vitals จาก frontend (logging only) |
 
 ---
 
@@ -251,7 +250,30 @@ Emergency/
 
 ---
 
-## Run Locally
+## Quick start (Docker — แนะนำ)
+
+```bash
+docker compose up --build
+# Frontend:  http://localhost:3000
+# Backend:   http://localhost:8000   (Swagger UI: /docs)
+```
+
+Frontend container เป็น nginx + บิ้วล์ของ React มาเสร็จแล้ว, proxy `/api/*`
+ไปที่ backend container ผ่าน Docker network — เปิดเบราว์เซอร์แล้วใช้งานได้
+เลย ไม่ต้องตั้ง `REACT_APP_API_URL`
+
+ตั้งค่า env ภายนอก (เช่นใช้ Supabase แทน SQLite):
+
+```bash
+# backend/.env หรือ shell env
+DATABASE_URL=postgresql://user:pass@db.supabase.co:5432/postgres
+ALLOWED_ORIGINS=https://yourdomain.com,http://localhost:3000
+JWT_SECRET=<random 32+ chars>     # ใช้กับ /auth/* (Phase 8)
+```
+
+---
+
+## Run Locally (ไม่ใช้ Docker)
 
 ```bash
 # Backend
@@ -278,21 +300,33 @@ pytest test_graph_builder.py test_pathfinding.py test_smoke_propagation.py \
 
 ---
 
-## Deploy บน Render
+## Deploy บน Render (manual)
 
-### 1. Deploy Backend
-1. [render.com](https://render.com) → **New → Blueprint** → เชื่อม GitHub repo
-2. Render อ่าน `render.yaml` → สร้าง 2 services อัตโนมัติ
-3. รอ `evacuation-backend` build เสร็จ → copy URL
+### 1. Deploy Backend (Web Service)
+1. [render.com](https://render.com) → **New → Web Service** → เชื่อม GitHub repo
+2. ตั้งค่า:
+   - **Root Directory:** `backend`
+   - **Runtime:** Python 3 (อ่านจาก `runtime.txt`)
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
+3. Environment Variables:
+   - `DATABASE_URL` — Supabase pooler URL (หรือเว้นว่างใช้ SQLite สำหรับทดสอบ)
+   - `ALLOWED_ORIGINS` — เช่น `https://evacuation-frontend.onrender.com`
+   - `JWT_SECRET` — random 32+ chars (ใช้กับ auth)
+4. รอ build เสร็จ → copy URL
 
-### 2. ตั้งค่า Frontend
-Dashboard → `evacuation-frontend` → **Environment** → เพิ่ม:
+### 2. Deploy Frontend (Static Site)
+1. **New → Static Site** → ชี้ repo เดียวกัน
+2. ตั้งค่า:
+   - **Root Directory:** `frontend`
+   - **Build Command:** `npm install && npm run build`
+   - **Publish Directory:** `build`
+3. Environment Variables:
+   - `REACT_APP_API_URL = https://<backend-url>.onrender.com`
 
-```
-REACT_APP_API_URL = https://evacuation-backend.onrender.com
-```
-
-กด **Manual Deploy** → frontend rebuild พร้อม URL จริง
+### 3. (ทางเลือก) Docker
+มี `Dockerfile` ทั้ง backend และ frontend + `docker-compose.yml` — Render Web Service
+จะ auto-detect Dockerfile ถ้ามี
 
 > **Note:** Free plan spin-down หลัง 15 นาที idle — request แรกอาจช้า ~30 วินาที
 

@@ -10,8 +10,14 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 import storage
+from auth import get_current_user
 from database import get_db
-from dynamic_graph import build_graph_from_db, get_exits_from_db, graph_to_cytoscape
+from dynamic_graph import (
+    build_graph_from_db,
+    get_exits_from_db,
+    graph_to_cytoscape,
+    invalidate_graph_cache,
+)
 from models import Building, Edge, Floor, Node
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from schemas import (
@@ -37,7 +43,8 @@ router = APIRouter(prefix="/buildings", tags=["buildings"])
 # Building CRUD
 # ---------------------------------------------------------------------------
 
-@router.post("", response_model=BuildingResponse, status_code=201)
+@router.post("", response_model=BuildingResponse, status_code=201,
+              dependencies=[Depends(get_current_user)])
 def create_building(payload: BuildingCreate, db: Session = Depends(get_db)):
     building = Building(**payload.model_dump())
     db.add(building)
@@ -53,7 +60,8 @@ def list_buildings(db: Session = Depends(get_db)):
 
 # NOTE: /import must be registered before /{building_id} so FastAPI matches
 # the literal path first instead of treating "import" as a building_id.
-@router.post("/import", response_model=BuildingImportResponse, status_code=201)
+@router.post("/import", response_model=BuildingImportResponse, status_code=201,
+              dependencies=[Depends(get_current_user)])
 def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db)):
     """Create a building + all nodes/edges from a single JSON payload."""
     building = Building(
@@ -94,7 +102,8 @@ def get_building(building_id: int, db: Session = Depends(get_db)):
     return b
 
 
-@router.delete("/{building_id}", status_code=204)
+@router.delete("/{building_id}", status_code=204,
+                dependencies=[Depends(get_current_user)])
 def delete_building(building_id: int, db: Session = Depends(get_db)):
     b = db.get(Building, building_id)
     if not b:
@@ -107,7 +116,8 @@ def delete_building(building_id: int, db: Session = Depends(get_db)):
 # Floor image upload
 # ---------------------------------------------------------------------------
 
-@router.post("/{building_id}/floors", response_model=FloorResponse, status_code=201)
+@router.post("/{building_id}/floors", response_model=FloorResponse, status_code=201,
+              dependencies=[Depends(get_current_user)])
 async def upload_floor(
     building_id:   int,
     floor_number:  int         = Form(...),
@@ -181,7 +191,8 @@ def list_floors(building_id: int, db: Session = Depends(get_db)):
 # Node management
 # ---------------------------------------------------------------------------
 
-@router.post("/{building_id}/nodes", response_model=NodeResponse, status_code=201)
+@router.post("/{building_id}/nodes", response_model=NodeResponse, status_code=201,
+              dependencies=[Depends(get_current_user)])
 def create_node(building_id: int, payload: NodeCreate, db: Session = Depends(get_db)):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
@@ -209,7 +220,8 @@ def list_nodes(building_id: int, db: Session = Depends(get_db)):
     return db.query(Node).filter(Node.building_id == building_id).all()
 
 
-@router.put("/{building_id}/nodes/{node_key}", response_model=NodeResponse)
+@router.put("/{building_id}/nodes/{node_key}", response_model=NodeResponse,
+             dependencies=[Depends(get_current_user)])
 def update_node(building_id: int, node_key: str, payload: NodeUpdate, db: Session = Depends(get_db)):
     node = (
         db.query(Node)
@@ -223,10 +235,12 @@ def update_node(building_id: int, node_key: str, payload: NodeUpdate, db: Sessio
         setattr(node, field, value)
     db.commit()
     db.refresh(node)
+    invalidate_graph_cache(building_id)
     return node
 
 
-@router.delete("/{building_id}/nodes/{node_key}", status_code=204)
+@router.delete("/{building_id}/nodes/{node_key}", status_code=204,
+                dependencies=[Depends(get_current_user)])
 def delete_node(building_id: int, node_key: str, db: Session = Depends(get_db)):
     node = (
         db.query(Node)
@@ -248,7 +262,8 @@ def delete_node(building_id: int, node_key: str, db: Session = Depends(get_db)):
 # Edge management
 # ---------------------------------------------------------------------------
 
-@router.post("/{building_id}/edges", response_model=EdgeResponse, status_code=201)
+@router.post("/{building_id}/edges", response_model=EdgeResponse, status_code=201,
+              dependencies=[Depends(get_current_user)])
 def create_edge(building_id: int, payload: EdgeCreate, db: Session = Depends(get_db)):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
@@ -281,7 +296,8 @@ def list_edges(building_id: int, db: Session = Depends(get_db)):
     return db.query(Edge).filter(Edge.building_id == building_id).all()
 
 
-@router.delete("/{building_id}/edges/{edge_id}", status_code=204)
+@router.delete("/{building_id}/edges/{edge_id}", status_code=204,
+                dependencies=[Depends(get_current_user)])
 def delete_edge(building_id: int, edge_id: int, db: Session = Depends(get_db)):
     edge = db.query(Edge).filter(Edge.id == edge_id, Edge.building_id == building_id).first()
     if not edge:
@@ -308,10 +324,6 @@ def get_graph(building_id: int, db: Session = Depends(get_db)):
 # Evacuation simulation
 # ---------------------------------------------------------------------------
 
-class EvacuateBuildingRequest:
-    pass
-
-
 from pydantic import BaseModel, Field as PField
 
 class CrowdDensityItem(BaseModel):
@@ -329,6 +341,20 @@ class EvacuateBuildingRequest(BaseModel):
     algorithm:          str                    = "dijkstra"
     compare_algorithms: bool                   = True
     occupied_rooms:     list[str]              = []
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "fire_location": "r201",
+                "blocked_exits": [],
+                "crowd_densities": [{"node_key": "c2", "density": 0.7}],
+                "use_weather_wind": True,
+                "algorithm": "dijkstra",
+                "compare_algorithms": True,
+                "occupied_rooms": ["r101", "r201", "r301"],
+            }
+        }
+    }
 
 
 @router.post("/{building_id}/evacuate")

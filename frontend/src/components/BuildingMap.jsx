@@ -49,8 +49,19 @@ const STYLESHEET = [
   // Compare mode: second algorithm path
   { selector: 'edge.compare-path',     style: { 'line-color': '#a78bfa', width: 3, 'line-style': 'dashed', 'z-index': 12 } },
   { selector: 'node.compare-path',     style: { 'border-color': '#a78bfa', 'border-width': 3 } },
-  { selector: 'node.fire-spread',      style: { 'background-color': '#f97316', 'border-color': '#fed7aa', 'border-width': 4 } },
-  { selector: 'node.fire-spread-hot',  style: { 'background-color': '#dc2626', 'border-color': '#fca5a5', 'border-width': 5 } },
+  // Smooth fire-intensity gradient (0 = just ignited yellow, 1 = fully burning deep red).
+  // Driven by `data('fireIntensity', number)` written via cy.batch() in the effect below.
+  { selector: 'node[fireIntensity]', style: {
+      'background-color': 'mapData(fireIntensity, 0, 1, #fbbf24, #7f1d1d)',
+      'border-color':     'mapData(fireIntensity, 0, 1, #fed7aa, #fca5a5)',
+      'border-width':     'mapData(fireIntensity, 0, 1, 3, 6)',
+  }},
+  // Continuous smoke heatmap on edges (preferred over discrete classes when level is known).
+  { selector: 'edge[smokeIntensity]', style: {
+      'line-color': 'mapData(smokeIntensity, 0, 1, #78716c, #7f1d1d)',
+      'width':      'mapData(smokeIntensity, 0, 1, 2, 4)',
+      'opacity':    'mapData(smokeIntensity, 0, 1, 0.55, 0.95)',
+  }},
 ];
 
 
@@ -72,6 +83,9 @@ export default function BuildingMap({
   fireSpreadTime    = 0,       // current slider time
 }) {
   const cyRef = useRef(null);
+  // Track which nodes were on fire on the previous render so we can tween
+  // newly-ignited ones (instead of snapping every node every frame).
+  const prevIgnitedRef = useRef(new Set());
 
   // Apply all visual classes whenever inputs change
   useEffect(() => {
@@ -83,6 +97,12 @@ export default function BuildingMap({
       'incident-smoke incident-crowd bottleneck maxflow compare-path ' +
       'fire-spread fire-spread-hot'
     );
+    // Clear continuous data attributes for a clean redraw — nodes/edges
+    // that should remain coloured are repopulated below in the same effect.
+    cy.batch(() => {
+      cy.nodes('[fireIntensity]').forEach(n => n.removeData('fireIntensity'));
+      cy.edges('[smokeIntensity]').forEach(e => e.removeData('smokeIntensity'));
+    });
 
     if (fireNode) cy.getElementById(fireNode).addClass('fire');
 
@@ -92,19 +112,24 @@ export default function BuildingMap({
       if (type === 'crowd') cy.getElementById(nid).addClass('incident-crowd');
     });
 
-    // Continuous smoke annotations (new model)
-    smokeAnnotations.forEach(({ source, target, smoke_level, blocked }) => {
-      const getEdge = (u, v) => {
-        const e1 = cy.getElementById(`${u}__${v}`);
-        const e2 = cy.getElementById(`${v}__${u}`);
-        return e1.length ? e1 : e2;
-      };
-      const edge = getEdge(source, target);
-      if (!edge.length) return;
-      if (blocked)               edge.addClass('smoke-blocked');
-      else if (smoke_level > 0.6) edge.addClass('smoke-high');
-      else if (smoke_level > 0.3) edge.addClass('smoke-mid');
-      else if (smoke_level > 0.05) edge.addClass('smoke-low');
+    // Continuous smoke annotations — write smoke_level into edge data so the
+    // `edge[smokeIntensity]` mapData selector renders a smooth gradient.
+    // Blocked edges stay as a discrete dotted-line class for unmistakable
+    // contrast against the gradient.
+    cy.batch(() => {
+      smokeAnnotations.forEach(({ source, target, smoke_level, blocked }) => {
+        const e1 = cy.getElementById(`${source}__${target}`);
+        const e2 = cy.getElementById(`${target}__${source}`);
+        const edge = e1.length ? e1 : e2;
+        if (!edge.length) return;
+        if (blocked) {
+          edge.addClass('smoke-blocked');
+          return;
+        }
+        if (smoke_level > 0.05) {
+          edge.data('smokeIntensity', Math.min(1, smoke_level));
+        }
+      });
     });
 
     // Legacy binary smoke edges (when no smokeAnnotations)
@@ -158,16 +183,34 @@ export default function BuildingMap({
         }
       }
     }
-    // Fire spread nodes: orange (just caught) or red (fully burning)
-    fireSpreadNodes.forEach(nodeId => {
-      const nodeData = fireSpreadData.find(n => n.node === nodeId);
-      const reachTime = nodeData ? nodeData.reach_time : 0;
-      if ((fireSpreadTime - reachTime) > 60) {
-        cy.getElementById(nodeId).addClass('fire-spread-hot');
-      } else {
-        cy.getElementById(nodeId).addClass('fire-spread');
-      }
+    // Fire spread nodes — render as a smooth intensity gradient via mapData.
+    // Intensity ramps from 0 (just ignited) to 1 (fully burning after 60s).
+    // Newly-ignited nodes since the last render get a short tween for an
+    // attention-grabbing "catches fire" cue; nodes already burning just
+    // get their intensity updated in a single batched paint.
+    const currentIgnited = new Set();
+    cy.batch(() => {
+      fireSpreadNodes.forEach(nodeId => {
+        const nodeData = fireSpreadData.find(n => n.node === nodeId);
+        const reachTime = nodeData ? nodeData.reach_time : 0;
+        const intensity = Math.max(0, Math.min(1, (fireSpreadTime - reachTime) / 60));
+        cy.getElementById(nodeId).data('fireIntensity', intensity);
+        currentIgnited.add(nodeId);
+      });
     });
+    // Tween nodes that crossed the ignition threshold since the previous render.
+    const newlyIgnited = [...currentIgnited].filter(id => !prevIgnitedRef.current.has(id));
+    newlyIgnited.forEach(id => {
+      const node = cy.getElementById(id);
+      if (!node.length) return;
+      node.animation({
+        style: { 'border-width': 8 },
+        duration: 250,
+      }).play().promise().then(() => {
+        node.animation({ style: { 'border-width': 4 }, duration: 250 }).play();
+      });
+    });
+    prevIgnitedRef.current = currentIgnited;
   }, [fireNode, smokeEdges, smokeAnnotations, selectedPath, bestPath,
       elements, incidentNodes, bottleneckEdges, maxflowBadges, compareResult,
       fireSpreadNodes, fireSpreadData, fireSpreadTime]);
@@ -228,7 +271,7 @@ export default function BuildingMap({
           position: 'absolute', left: 12, top: y, zIndex: 10,
           background: '#1e293b', border: '1px solid #334155', borderRadius: 4,
           padding: '2px 8px', fontSize: 11, color: '#475569', fontWeight: 600,
-        }}>{label}</div>
+        }}>{label.replace('Floor', 'ชั้น')}</div>
       ))}
 
       {/* Hint: click to report */}
@@ -249,45 +292,50 @@ export default function BuildingMap({
         borderRadius: 8, padding: '10px 14px', zIndex: 10,
         fontSize: 12, color: '#94a3b8', border: '1px solid #334155',
       }}>
-        {Object.entries(NODE_COLORS).map(([type, color]) => (
+        {[
+          { type: 'room',     label: 'ห้อง' },
+          { type: 'corridor', label: 'ทางเดิน' },
+          { type: 'stair',    label: 'บันได' },
+          { type: 'exit',     label: 'ทางออก' },
+        ].map(({ type, label }) => (
           <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: color }} />
-            {type}
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: NODE_COLORS[type] }} />
+            {label}
           </div>
         ))}
         <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#f59e0b', borderRadius: 2 }} /> selected
+            <div style={{ width: 12, height: 3, background: '#f59e0b', borderRadius: 2 }} /> เส้นทางที่เลือก
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#22c55e', borderRadius: 2 }} /> best route
+            <div style={{ width: 12, height: 3, background: '#22c55e', borderRadius: 2 }} /> เส้นทางดีที่สุด
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#a78bfa', borderRadius: 2, borderTop: '1px dashed #a78bfa' }} /> A* route
+            <div style={{ width: 12, height: 3, background: '#a78bfa', borderRadius: 2 }} /> เส้นทาง A*
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#f97316', borderRadius: 2 }} /> bottleneck
+            <div style={{ width: 12, height: 3, background: '#f97316', borderRadius: 2 }} /> คอขวด
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 2 }} /> fire
+            <div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 2 }} /> ไฟ
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#f97316' }} /> ไฟเพิ่งถึง
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#fbbf24' }} /> ไฟเพิ่งถึง
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#dc2626' }} /> ไฟลุกแรง
+            <div style={{ width: 12, height: 12, borderRadius: 3, background: '#7f1d1d' }} /> ไฟลุกแรง
           </div>
         </div>
 
         {/* Smoke level legend */}
         {smokeAnnotations.length > 0 && (
           <div style={{ borderTop: '1px solid #334155', marginTop: 6, paddingTop: 6 }}>
-            <div style={{ marginBottom: 4, color: '#64748b', fontSize: 11 }}>Smoke level</div>
+            <div style={{ marginBottom: 4, color: '#64748b', fontSize: 11 }}>ระดับควัน</div>
             {[
-              { label: 'blocked', color: '#7f1d1d' },
-              { label: 'high',    color: '#ef4444' },
-              { label: 'medium',  color: '#b45309' },
-              { label: 'low',     color: '#78716c' },
+              { label: 'ปิดกั้น',    color: '#7f1d1d' },
+              { label: 'หนา',       color: '#ef4444' },
+              { label: 'ปานกลาง',   color: '#b45309' },
+              { label: 'บาง',       color: '#78716c' },
             ].map(({ label, color }) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                 <div style={{ width: 12, height: 3, background: color, borderRadius: 2 }} /> {label}
@@ -312,7 +360,7 @@ export default function BuildingMap({
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           height: '100%', color: '#475569', fontSize: 16,
         }}>
-          Configure conditions and click <strong style={{ marginLeft: 6 }}>Run Evacuation</strong>
+          กำหนดเงื่อนไขแล้วกด <strong style={{ marginLeft: 6 }}>เริ่มจำลองอพยพ</strong>
         </div>
       )}
     </div>

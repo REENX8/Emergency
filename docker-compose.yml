@@ -1,0 +1,33 @@
+services:
+  backend:
+    build: ./backend
+    container_name: evacuation-backend
+    restart: unless-stopped
+    environment:
+      # Leave DATABASE_URL unset to use the bundled SQLite file inside the
+      # container; set it to a Supabase / Postgres URL for production-like
+      # behaviour. The CRA dev server isn't talking to this container.
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+    volumes:
+      # Persist the SQLite file + uploaded floor plans across restarts.
+      - backend-data:/app
+    expose:
+      - "8000"
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Browser → nginx → backend, so the bundled URL is a same-origin /api.
+        REACT_APP_API_URL: /api
+    container_name: evacuation-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  backend-data:

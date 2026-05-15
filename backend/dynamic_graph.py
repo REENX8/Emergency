@@ -3,13 +3,67 @@ dynamic_graph.py — Build a NetworkX graph from database building data.
 
 Replaces the hardcoded build_evacuation_graph() for DB-backed buildings.
 Active incidents automatically increase edge weights or block edges entirely.
+
+In-process cache:
+  The "base graph" (no manual crowd overrides) is cached per-building under a
+  cheap version key — (node_count, edge_count, latest_incident_id) — so back-
+  to-back requests skip the DB roundtrip and re-walk. Manual crowd overrides
+  are applied to a deep copy of the cached graph on retrieval.
 """
 
+import copy
+import logging
 import networkx as nx
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from graph_builder import calculate_edge_weight
 from models import Building, Node, Edge, Incident
+
+logger = logging.getLogger(__name__)
+
+
+# building_id -> (version_key, base_graph)
+_graph_cache: dict[int, tuple[tuple, nx.Graph]] = {}
+
+
+def _compute_version_key(building_id: int, db: Session) -> tuple:
+    """Cheap stamp that changes whenever the graph topology or incidents change."""
+    node_count = db.query(func.count(Node.id)).filter(Node.building_id == building_id).scalar() or 0
+    edge_count = db.query(func.count(Edge.id)).filter(Edge.building_id == building_id).scalar() or 0
+    latest_incident = (
+        db.query(func.max(Incident.id))
+        .filter(Incident.building_id == building_id)
+        .scalar()
+    ) or 0
+    return (node_count, edge_count, latest_incident)
+
+
+def invalidate_graph_cache(building_id: int | None = None) -> None:
+    """Drop cached base graphs. Call after mutating nodes/edges/incidents."""
+    if building_id is None:
+        _graph_cache.clear()
+    else:
+        _graph_cache.pop(building_id, None)
+
+
+def _apply_crowd_overrides(G: nx.Graph, crowd_overrides: dict[str, float]) -> None:
+    """Re-weight edges adjacent to any node with a crowd override (in place)."""
+    if not crowd_overrides:
+        return
+    affected_nodes = set(crowd_overrides.keys()) & set(G.nodes())
+    for n in affected_nodes:
+        for _, neighbour, data in G.edges(n, data=True):
+            density = (
+                crowd_overrides.get(n, 0.0)
+                + crowd_overrides.get(neighbour, 0.0)
+            ) / 2.0
+            if data.get("smoke_blocked"):
+                continue
+            data["crowd_density"] = round(density, 3)
+            data["weight"] = calculate_edge_weight(
+                data["distance"], density, 0.0, data["is_stair"]
+            )
 
 
 def build_graph_from_db(
@@ -36,6 +90,15 @@ def build_graph_from_db(
     if crowd_densities is None:
         crowd_densities = {}
 
+    # Cache check — base graph is built without manual crowd overrides; we
+    # apply those to a copy so callers always get a fresh, mutable graph.
+    version_key = _compute_version_key(building_id, db)
+    cached = _graph_cache.get(building_id)
+    if cached and cached[0] == version_key:
+        G = copy.deepcopy(cached[1])
+        _apply_crowd_overrides(G, crowd_densities)
+        return G
+
     # Load data from DB
     db_nodes  = db.query(Node).filter(Node.building_id == building_id).all()
     db_edges  = db.query(Edge).filter(Edge.building_id == building_id).all()
@@ -61,9 +124,8 @@ def build_graph_from_db(
             existing = crowd_override.get(inc.node_key, 0.0)
             crowd_override[inc.node_key] = max(existing, inc.severity)
 
-    # Merge DB crowd overrides with manual crowd_densities (manual wins)
-    merged_crowd = {**crowd_override, **crowd_densities}
-
+    # Build the BASE graph using only DB-derived crowd (manual overrides are
+    # applied on the cached deepcopy below).
     G = nx.Graph()
 
     # Add nodes
@@ -85,7 +147,7 @@ def build_graph_from_db(
         if e.u_key not in G or e.v_key not in G:
             continue  # orphaned edge (node deleted)
 
-        density = (merged_crowd.get(e.u_key, 0.0) + merged_crowd.get(e.v_key, 0.0)) / 2.0
+        density = (crowd_override.get(e.u_key, 0.0) + crowd_override.get(e.v_key, 0.0)) / 2.0
         weight    = calculate_edge_weight(e.distance_m, density, 0.0, e.is_stair)
         base_time = calculate_edge_weight(e.distance_m, 0.0,    0.0, e.is_stair)
 
@@ -102,7 +164,12 @@ def build_graph_from_db(
             smoke_blocked = smoke_blocked,
         )
 
-    return G
+    # Cache the freshly built base graph, then return a copy with manual
+    # crowd overrides applied (so callers can safely mutate).
+    _graph_cache[building_id] = (version_key, G)
+    G_out = copy.deepcopy(G)
+    _apply_crowd_overrides(G_out, crowd_densities)
+    return G_out
 
 
 def get_exits_from_db(building_id: int, db: Session) -> list[str]:

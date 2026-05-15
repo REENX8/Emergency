@@ -1,15 +1,17 @@
 /**
  * SimulationPage — evacuation simulation for a DB-backed building.
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 
-import BuildingMap    from '../components/BuildingMap';
-import ControlPanel   from '../components/ControlPanel';
-import ResultsTable   from '../components/ResultsTable';
-import IncidentPanel  from '../components/IncidentPanel';
-import AnalysisPanel  from '../components/AnalysisPanel';
+import BuildingMap     from '../components/BuildingMap';
+import ControlPanel    from '../components/ControlPanel';
+import ResultsTable    from '../components/ResultsTable';
+import IncidentPanel   from '../components/IncidentPanel';
+import AnalysisPanel   from '../components/AnalysisPanel';
+import BuildingSelector from '../components/BuildingSelector';
+import AuthBar          from '../components/AuthBar';
 
 const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -45,6 +47,10 @@ export default function SimulationPage() {
   const [smokeAnnotations, setSmokeAnnotations] = useState([]);
   const [fireSpread, setFireSpread] = useState(null);
   const [fireTime,   setFireTime]   = useState(0);
+  const [firePlaying, setFirePlaying] = useState(false);
+  const [lastApiMs,  setLastApiMs]   = useState(null);
+  const rafRef = useRef(null);
+  const lastTickRef = useRef(0);
 
   const loadGraph = useCallback(async () => {
     try {
@@ -69,33 +75,34 @@ export default function SimulationPage() {
     setCompareResult(null);
     const algo = algorithm === 'compare' ? 'dijkstra' : algorithm;
     try {
+      let resp;
       if (algorithm === 'compare') {
-        const { data } = await axios.post(
+        resp = await axios.post(
           `${API}/buildings/${buildingId}/evacuate/compare`,
           {
             fire_location:         params.fire_location,
-            crowd_densities:       (params.crowd_densities || []).map(cd => ({
-              node_key: cd.node_id || cd.node_key, density: cd.density,
-            })),
+            crowd_densities:       params.crowd_densities || [],
             use_weather_wind:      params.use_weather_wind,
             manual_wind_direction: params.manual_wind_direction,
             manual_wind_speed:     params.manual_wind_speed,
           }
         );
-        setCompareResult(data);
-        setSmokeAnnotations(data.smoke_annotations || []);
-        setWeather(data.weather);
+        setCompareResult(resp.data);
+        setSmokeAnnotations(resp.data.smoke_annotations || []);
+        setWeather(resp.data.weather);
         setResult(null);
         setSelectedPath(null);
       } else {
-        const { data } = await axios.post(
+        resp = await axios.post(
           `${API}/buildings/${buildingId}/evacuate`,
           { ...params, algorithm: algo, compare_algorithms: true }
         );
-        setResult(data);
-        setWeather(data.weather);
+        setResult(resp.data);
+        setWeather(resp.data.weather);
         setSelectedPath(null);
       }
+      const ms = resp.headers?.['x-process-time-ms'];
+      if (ms != null) setLastApiMs(Number(ms));
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'API error');
     } finally {
@@ -126,8 +133,35 @@ export default function SimulationPage() {
       });
       setFireSpread(data);
       setFireTime(0);
+      setFirePlaying(false);
     } catch { /* ignore */ }
   };
+
+  // Auto-play fire-spread timeline via requestAnimationFrame.
+  // Advances ~5 simulated seconds per real second; stops at max_time.
+  useEffect(() => {
+    if (!firePlaying || !fireSpread) return;
+    const max = Math.ceil(fireSpread.max_time);
+    const SIM_SECONDS_PER_REAL_SECOND = 5;
+    lastTickRef.current = performance.now();
+    const step = (now) => {
+      const dt = (now - lastTickRef.current) / 1000;
+      lastTickRef.current = now;
+      setFireTime(prev => {
+        const next = prev + dt * SIM_SECONDS_PER_REAL_SECOND;
+        if (next >= max) {
+          setFirePlaying(false);
+          return max;
+        }
+        return next;
+      });
+      rafRef.current = requestAnimationFrame(step);
+    };
+    rafRef.current = requestAnimationFrame(step);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [firePlaying, fireSpread]);
 
   const activeResult = result || (compareResult ? {
     fire_location:       compareResult.fire_location,
@@ -169,6 +203,8 @@ export default function SimulationPage() {
           🚨 {building.name}
         </span>
 
+        <BuildingSelector currentId={buildingId} />
+
         <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
           {['dijkstra', 'astar', 'compare'].map(a => (
             <button key={a} onClick={() => setAlgorithm(a)} style={{
@@ -195,6 +231,19 @@ export default function SimulationPage() {
           </span>
         )}
 
+        {lastApiMs != null && (
+          <span
+            title="เวลาประมวลผลล่าสุดของ backend"
+            style={{
+              fontSize: 11, color: lastApiMs > 500 ? '#fbbf24' : '#64748b',
+              background: '#0f172a', padding: '2px 8px', borderRadius: 99,
+              border: '1px solid #334155',
+            }}
+          >
+            ⏱ {lastApiMs.toFixed(0)}ms
+          </span>
+        )}
+
         {error && (
           <span style={{ color: '#f87171', fontSize: 13, background: '#450a0a',
             padding: '4px 10px', borderRadius: 6, marginLeft: 'auto' }}>
@@ -207,6 +256,8 @@ export default function SimulationPage() {
           background: '#334155', border: 'none', borderRadius: 6,
           padding: '5px 12px', color: '#cbd5e1', cursor: 'pointer', fontSize: 13,
         }}>✏️ แก้ไขแปลน</button>
+
+        <AuthBar />
       </div>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -233,14 +284,30 @@ export default function SimulationPage() {
           {fireSpread && (
             <div style={{ background: '#1e293b', padding: '8px 16px', borderTop: '1px solid #334155', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ color: '#f97316', fontSize: 12, fontWeight: 700 }}>🔥 ไฟลาม</span>
-              <input type="range" min={0} max={Math.ceil(fireSpread.max_time)} value={fireTime}
-                onChange={e => setFireTime(Number(e.target.value))}
+              <button
+                onClick={() => {
+                  if (fireTime >= Math.ceil(fireSpread.max_time)) setFireTime(0);
+                  setFirePlaying(p => !p);
+                }}
+                style={{
+                  background: firePlaying ? '#b45309' : '#16a34a', border: 'none',
+                  borderRadius: 4, color: '#fff', padding: '3px 10px',
+                  cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                }}
+                title="เล่นไทม์ไลน์ไฟลาม"
+              >
+                {firePlaying ? '⏸ หยุด' : '▶ เล่น'}
+              </button>
+              <input type="range" min={0} max={Math.ceil(fireSpread.max_time)} step={0.1} value={fireTime}
+                onChange={e => { setFirePlaying(false); setFireTime(Number(e.target.value)); }}
                 style={{ flex: 1 }} />
-              <span style={{ color: '#f1f5f9', fontSize: 12, minWidth: 60 }}>{fireTime}s / {Math.ceil(fireSpread.max_time)}s</span>
-              <span style={{ color: '#94a3b8', fontSize: 11 }}>
-                🔥 {fireSpread.nodes.filter(n => n.reach_time <= fireTime).length} nodes
+              <span style={{ color: '#f1f5f9', fontSize: 12, minWidth: 80 }}>
+                {fireTime.toFixed(1)}s / {Math.ceil(fireSpread.max_time)}s
               </span>
-              <button onClick={() => setFireSpread(null)} style={{ background: '#334155', border: 'none', borderRadius: 4, color: '#94a3b8', padding: '2px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
+              <span style={{ color: '#94a3b8', fontSize: 11 }}>
+                🔥 {fireSpread.nodes.filter(n => n.reach_time <= fireTime).length} จุด
+              </span>
+              <button onClick={() => { setFireSpread(null); setFirePlaying(false); }} style={{ background: '#334155', border: 'none', borderRadius: 4, color: '#94a3b8', padding: '2px 8px', cursor: 'pointer', fontSize: 11 }}>✕</button>
             </div>
           )}
 
@@ -249,10 +316,10 @@ export default function SimulationPage() {
             paddingLeft: 14, paddingTop: 8, background: '#0f172a',
           }}>
             <button style={tabStyle(tab === TAB.results)} onClick={() => setTab(TAB.results)}>
-              📋 Results
+              📋 ผลลัพธ์
             </button>
             <button style={tabStyle(tab === TAB.analysis)} onClick={() => setTab(TAB.analysis)}>
-              📊 Analysis
+              📊 วิเคราะห์
             </button>
           </div>
 
