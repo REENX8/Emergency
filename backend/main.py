@@ -86,6 +86,14 @@ app.add_middleware(
 )
 
 
+class WebVitalsMetric(BaseModel):
+    name:    str
+    value:   float
+    rating:  Optional[str] = None
+    id:      Optional[str] = None
+    navType: Optional[str] = None
+
+
 @app.middleware("http")
 async def _timing_middleware(request: Request, call_next):
     """Attach X-Process-Time-Ms header and log slow requests (>500ms)."""
@@ -105,6 +113,30 @@ if not storage.is_supabase_configured():
     UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+@app.post("/metrics/web-vitals", status_code=204, tags=["metrics"])
+async def record_web_vitals(metric: WebVitalsMetric):
+    """Lightweight sink for Core Web Vitals (CLS/FCP/INP/LCP/TTFB). Logs only."""
+    logger.info(
+        "vitals %s=%.1f rating=%s nav=%s",
+        metric.name, metric.value, metric.rating or "-", metric.navType or "-",
+    )
+    return None
+
+
+# Allow the browser to read the timing header from cross-origin responses
+# (required because /metrics/web-vitals + everything else is on a different
+# host than the React app in production).
+@app.middleware("http")
+async def _expose_timing_header(request: Request, call_next):
+    response = await call_next(request)
+    existing = response.headers.get("Access-Control-Expose-Headers", "")
+    headers = [h for h in existing.split(",") if h.strip()]
+    if "X-Process-Time-Ms" not in headers:
+        headers.append("X-Process-Time-Ms")
+    response.headers["Access-Control-Expose-Headers"] = ", ".join(headers)
+    return response
+
 
 # Include routers
 app.include_router(buildings_router.router)

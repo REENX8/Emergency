@@ -46,6 +46,7 @@ export default function SimulationPage() {
   const [fireSpread, setFireSpread] = useState(null);
   const [fireTime,   setFireTime]   = useState(0);
   const [firePlaying, setFirePlaying] = useState(false);
+  const [lastApiMs,  setLastApiMs]   = useState(null);
   const rafRef = useRef(null);
   const lastTickRef = useRef(0);
 
@@ -72,8 +73,9 @@ export default function SimulationPage() {
     setCompareResult(null);
     const algo = algorithm === 'compare' ? 'dijkstra' : algorithm;
     try {
+      let resp;
       if (algorithm === 'compare') {
-        const { data } = await axios.post(
+        resp = await axios.post(
           `${API}/buildings/${buildingId}/evacuate/compare`,
           {
             fire_location:         params.fire_location,
@@ -83,20 +85,22 @@ export default function SimulationPage() {
             manual_wind_speed:     params.manual_wind_speed,
           }
         );
-        setCompareResult(data);
-        setSmokeAnnotations(data.smoke_annotations || []);
-        setWeather(data.weather);
+        setCompareResult(resp.data);
+        setSmokeAnnotations(resp.data.smoke_annotations || []);
+        setWeather(resp.data.weather);
         setResult(null);
         setSelectedPath(null);
       } else {
-        const { data } = await axios.post(
+        resp = await axios.post(
           `${API}/buildings/${buildingId}/evacuate`,
           { ...params, algorithm: algo, compare_algorithms: true }
         );
-        setResult(data);
-        setWeather(data.weather);
+        setResult(resp.data);
+        setWeather(resp.data.weather);
         setSelectedPath(null);
       }
+      const ms = resp.headers?.['x-process-time-ms'];
+      if (ms != null) setLastApiMs(Number(ms));
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'API error');
     } finally {
@@ -220,6 +224,19 @@ export default function SimulationPage() {
         {weather && (
           <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>
             💨 {weather.wind_speed_ms} m/s · {weather.wind_direction_deg}°
+          </span>
+        )}
+
+        {lastApiMs != null && (
+          <span
+            title="เวลาประมวลผลล่าสุดของ backend"
+            style={{
+              fontSize: 11, color: lastApiMs > 500 ? '#fbbf24' : '#64748b',
+              background: '#0f172a', padding: '2px 8px', borderRadius: 99,
+              border: '1px solid #334155',
+            }}
+          >
+            ⏱ {lastApiMs.toFixed(0)}ms
           </span>
         )}
 
