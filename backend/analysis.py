@@ -115,39 +115,62 @@ def compute_safety_score(G: nx.Graph) -> dict:
     """
     Compute a composite safety score (0–100) for the building graph.
 
-    Score = factor_exits * 30 + factor_connectivity * 40 + factor_bottleneck * 30
+    S = 40 × min(1, N_exit / (V_total/5))
+      + 30 × min(1, C_min_cut / (P_total/10))
+      + 30 × (λ(G) / (k+1))
 
-    factor_exits        = n_exits / n_nodes          → more exits = safer
-    factor_connectivity = 1 if connected, else 1/n_components
-    factor_bottleneck   = 1 − (n_bridges / n_edges)  → fewer bridges = safer
-
-    Returns score + factor breakdown for academic presentation.
+    N_exit    = number of exit nodes
+    V_total   = total node count
+    C_min_cut = minimum edge cut size (edges/min)
+    P_total   = sum of capacity of non-exit nodes
+    λ(G)      = edge connectivity (nx.edge_connectivity)
+    k         = 1 (target fault tolerance)
     """
     n_nodes = G.number_of_nodes()
-    n_edges = max(G.number_of_edges(), 1)
     n_exits = sum(1 for _, d in G.nodes(data=True) if d.get("type") == "exit")
 
     if n_nodes == 0:
         return {
             "score": 0.0, "grade": "F",
             "factors": {
-                "exit_ratio": 0.0, "connectivity": 0.0, "bottleneck_resilience": 0.0
+                "exit_coverage": 0.0,
+                "min_cut_factor": 0.0,
+                "edge_connectivity_ratio": 0.0,
             },
-            "details": {}
+            "details": {},
         }
 
-    components  = list(nx.connected_components(G))
-    is_connected = len(components) == 1
-    n_bridges   = len(list(nx.bridges(G))) if G.number_of_nodes() > 1 else 0
+    k = 1
 
-    factor_exits        = n_exits / n_nodes
-    factor_connectivity = 1.0 if is_connected else 1.0 / len(components)
-    factor_bottleneck   = 1.0 - (n_bridges / n_edges)
+    # Factor 1: exit coverage — ratio of exits relative to building size
+    exit_coverage = min(1.0, n_exits / (n_nodes / 5)) if n_nodes > 0 else 0.0
+
+    # Factor 2: min-cut capacity relative to building population
+    min_cut_size = 0
+    try:
+        if nx.is_connected(G) and G.number_of_edges() > 0:
+            min_cut_size = len(nx.minimum_edge_cut(G))
+    except Exception:
+        pass
+
+    p_total = sum(
+        d.get("capacity", 0)
+        for _, d in G.nodes(data=True)
+        if d.get("type") != "exit"
+    )
+    min_cut_factor = min(1.0, min_cut_size / (p_total / 10)) if p_total > 0 else 0.0
+
+    # Factor 3: edge connectivity normalised by target fault tolerance
+    try:
+        edge_conn = nx.edge_connectivity(G)
+    except Exception:
+        edge_conn = 0
+    edge_connectivity_ratio = edge_conn / (k + 1)
 
     score = round(
-        factor_exits        * 30 +
-        factor_connectivity * 40 +
-        factor_bottleneck   * 30,
+        exit_coverage           * 40 +
+        min_cut_factor          * 30 +
+        edge_connectivity_ratio * 30,
         1,
     )
 
@@ -163,17 +186,16 @@ def compute_safety_score(G: nx.Graph) -> dict:
         "score": score,
         "grade": grade,
         "factors": {
-            "exit_ratio":            round(factor_exits, 4),
-            "connectivity":          round(factor_connectivity, 4),
-            "bottleneck_resilience": round(factor_bottleneck, 4),
+            "exit_coverage":            round(exit_coverage, 4),
+            "min_cut_factor":           round(min_cut_factor, 4),
+            "edge_connectivity_ratio":  round(edge_connectivity_ratio, 4),
         },
         "details": {
-            "n_nodes":     n_nodes,
-            "n_edges":     n_edges,
-            "n_exits":     n_exits,
-            "n_bridges":   n_bridges,
-            "is_connected": is_connected,
-            "n_components": len(components),
+            "n_nodes":           n_nodes,
+            "n_exits":           n_exits,
+            "p_total":           p_total,
+            "min_cut_size":      min_cut_size,
+            "edge_connectivity": edge_conn,
         },
     }
 
@@ -321,8 +343,8 @@ def run_experiments(
         if u_type == "room" or v_type == "room":
             new_w = calculate_edge_weight(
                 data.get("distance", 10),
-                data.get("width", 2),
                 0.8,
+                data.get("smoke_level", 0.0),
                 data.get("is_stair", False),
             )
             G3[u][v]["weight"] = new_w

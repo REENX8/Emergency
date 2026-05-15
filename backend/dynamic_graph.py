@@ -86,8 +86,8 @@ def build_graph_from_db(
             continue  # orphaned edge (node deleted)
 
         density = (merged_crowd.get(e.u_key, 0.0) + merged_crowd.get(e.v_key, 0.0)) / 2.0
-        weight   = calculate_edge_weight(e.distance_m, e.width_m, density, e.is_stair)
-        base_time = calculate_edge_weight(e.distance_m, e.width_m, 0.0, e.is_stair)
+        weight    = calculate_edge_weight(e.distance_m, density, 0.0, e.is_stair)
+        base_time = calculate_edge_weight(e.distance_m, 0.0,    0.0, e.is_stair)
 
         smoke_blocked = bool(e.u_key in smoke_nodes or e.v_key in smoke_nodes)
 
