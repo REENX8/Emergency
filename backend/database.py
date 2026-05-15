@@ -8,7 +8,7 @@ Falls back to SQLite for local development.
 
 import os
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./evacuation.db")
@@ -49,3 +49,10 @@ def get_db():
 def init_db():
     from models import Building, Floor, Node, Edge, Incident  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    # Migrate: add tmd_station_id to existing databases that pre-date this column
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE buildings ADD COLUMN tmd_station_id VARCHAR DEFAULT '515201'"))
+            conn.commit()
+        except Exception:
+            pass  # column already exists
