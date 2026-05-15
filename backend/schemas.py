@@ -12,17 +12,19 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class BuildingCreate(BaseModel):
-    name:        str
-    address:     str = ""
-    description: str = ""
+    name:           str
+    address:        str = ""
+    description:    str = ""
+    tmd_station_id: str = Field(default="515201", description="TMD weather station ID for wind data (default: Bangna, Bangkok)")
 
 
 class BuildingResponse(BaseModel):
-    id:          int
-    name:        str
-    address:     str
-    description: str
-    created_at:  datetime
+    id:             int
+    name:           str
+    address:        str
+    description:    str
+    tmd_station_id: str
+    created_at:     datetime
 
     model_config = {"from_attributes": True}
 
@@ -130,11 +132,12 @@ class IncidentResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class BuildingImportPayload(BaseModel):
-    name:        str
-    address:     str = ""
-    description: str = ""
-    nodes:       list[NodeCreate] = []
-    edges:       list[EdgeCreate] = []
+    name:           str
+    address:        str = ""
+    description:    str = ""
+    tmd_station_id: str = "515201"
+    nodes:          list[NodeCreate] = []
+    edges:          list[EdgeCreate] = []
 
 
 class BuildingImportResponse(BuildingResponse):

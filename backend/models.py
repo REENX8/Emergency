@@ -12,11 +12,12 @@ from database import Base
 class Building(Base):
     __tablename__ = "buildings"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String, nullable=False)
-    address     = Column(String, default="")
-    description = Column(String, default="")
-    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id             = Column(Integer, primary_key=True, index=True)
+    name           = Column(String, nullable=False)
+    address        = Column(String, default="")
+    description    = Column(String, default="")
+    tmd_station_id = Column(String, default="515201")   # TMD weather station for wind data
+    created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floors    = relationship("Floor",    back_populates="building", cascade="all, delete-orphan")
     nodes     = relationship("Node",     back_populates="building", cascade="all, delete-orphan")

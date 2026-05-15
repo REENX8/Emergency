@@ -337,7 +337,8 @@ async def evacuate_building(
     req: EvacuateBuildingRequest,
     db: Session = Depends(get_db),
 ):
-    if not db.get(Building, building_id):
+    building = db.get(Building, building_id)
+    if not building:
         raise HTTPException(404, detail="Building not found")
 
     crowd_map = {cd.node_key: cd.density for cd in req.crowd_densities}
@@ -351,9 +352,9 @@ async def evacuate_building(
         if n and n not in all_nodes:
             raise HTTPException(400, detail=f"Node '{n}' not found in building graph")
 
-    # Weather / wind
+    # Weather / wind — use building's configured TMD station
     if req.use_weather_wind:
-        weather = await fetch_weather()
+        weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
             "wind_speed_ms":      req.manual_wind_speed or 0.0,
@@ -451,7 +452,8 @@ async def compare_evacuation(
       - nodes_visited per algorithm
       - smoke level per edge (new continuous model)
     """
-    if not db.get(Building, building_id):
+    building = db.get(Building, building_id)
+    if not building:
         raise HTTPException(404, detail="Building not found")
 
     crowd_map = {cd.node_key: cd.density for cd in req.crowd_densities}
@@ -462,9 +464,9 @@ async def compare_evacuation(
             400, detail=f"fire_location '{req.fire_location}' not in building graph"
         )
 
-    # Weather
+    # Weather — use building's configured TMD station
     if req.use_weather_wind:
-        weather = await fetch_weather()
+        weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
             "wind_speed_ms":      req.manual_wind_speed or 0.0,
@@ -529,7 +531,8 @@ async def fire_spread_endpoint(
         fire_node, wind info, reach_time dict, spread_order, unreachable,
         nodes list (for Cytoscape), max_time
     """
-    if not db.get(Building, building_id):
+    building = db.get(Building, building_id)
+    if not building:
         raise HTTPException(404, detail="Building not found")
 
     G = build_graph_from_db(building_id, db)
@@ -537,9 +540,9 @@ async def fire_spread_endpoint(
     if req.fire_node not in G:
         raise HTTPException(400, detail=f"fire_node '{req.fire_node}' not in building graph")
 
-    # Resolve wind source
+    # Resolve wind source — use building's configured TMD station
     if req.use_weather_wind:
-        weather = await fetch_weather()
+        weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
             "wind_speed_ms":      req.manual_wind_speed or 0.0,
@@ -598,7 +601,8 @@ async def propagate_smoke(
     This endpoint is called automatically by the frontend when a fire
     incident is reported, and its output is overlaid on the BuildingMap.
     """
-    if not db.get(Building, building_id):
+    building = db.get(Building, building_id)
+    if not building:
         raise HTTPException(404, detail="Building not found")
 
     G = build_graph_from_db(building_id, db)
@@ -606,8 +610,9 @@ async def propagate_smoke(
     if req.fire_node not in G:
         raise HTTPException(400, detail=f"fire_node '{req.fire_node}' not in building graph")
 
+    # Use building's configured TMD station
     if req.use_weather_wind:
-        weather = await fetch_weather()
+        weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
             "wind_speed_ms":      req.manual_wind_speed or 0.0,
