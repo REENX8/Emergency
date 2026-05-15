@@ -152,14 +152,13 @@ Algorithm: Dijkstra จาก fire source — minimize cumulative `t_spread`
 | `GET` | `/buildings/{id}/analysis` | safety score + bottleneck + max-flow |
 | `POST` | `/buildings/{id}/incidents` | รายงานเหตุการณ์ (fire/smoke/crowd) |
 
-### Legacy Single-Building
+### Meta
 
 | Method | Endpoint | คำอธิบาย |
 |---|---|---|
-| `GET` | `/building` | graph อาคารตัวอย่าง 3 ชั้น |
-| `POST` | `/evacuate` | จำลองการอพยพ (hardcoded building) |
 | `GET` | `/weather` | ข้อมูลสภาพอากาศจาก TMD API |
 | `GET` | `/health` | liveness check |
+| `POST` | `/metrics/web-vitals` | รับ Core Web Vitals จาก frontend (logging only) |
 
 ---
 
