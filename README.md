@@ -11,8 +11,9 @@
 | Backend | Python 3.11 + FastAPI |
 | Graph Engine | NetworkX |
 | Pathfinding | Dijkstra, A* (custom implementation) |
+| Database | SQLite (local) / PostgreSQL (production) |
 | Frontend | React 18 + Cytoscape.js |
-| Weather | Thai Meteorological Department Open Data API |
+| Weather | Thai Meteorological Department (TMD) Open Data API |
 | Deploy | Render (Singapore region) |
 
 ---
@@ -25,43 +26,94 @@ React Frontend (Cytoscape.js)
         │ HTTP (REST)
         ▼
   FastAPI Backend
-  ┌─────────────────────────────────┐
-  │  POST /evacuate                 │
-  │    ├── graph_builder.py         │  Building graph (NetworkX)
-  │    ├── pathfinding.py           │  Dijkstra / A*
-  │    └── weather.py               │  TMD API → smoke spread model
-  └─────────────────────────────────┘
+  ┌──────────────────────────────────────────┐
+  │  routers/buildings.py                    │
+  │    ├── dynamic_graph.py   DB → NetworkX  │
+  │    ├── pathfinding.py     Dijkstra / A*  │
+  │    ├── fire_spread.py     ไฟลาม model   │
+  │    ├── smoke_propagation.py  ควันไฟ      │
+  │    ├── analysis.py        safety score   │
+  │    └── weather.py         TMD API        │
+  └──────────────────────────────────────────┘
+        │
+        ▼
+  SQLite / PostgreSQL (buildings, nodes, edges, incidents)
 ```
 
 ---
 
-## Building Graph Model
+## Mathematical Models
 
-อาคาร 3 ชั้น แบบจำลองเป็น **undirected weighted graph**
-
-- **21 nodes** — ห้อง (9), ทางเดิน (3), บันได (6), ทางออก (3)
-- **22 edges** — การเชื่อมต่อระหว่างพื้นที่
+### 1. Edge Weight Formula
 
 ```
-Stair A ←── Corridor ──→ Stair B
-              │
-           (West Exit)      ← Floor 1 เท่านั้น
-
-แนวดิ่ง: Stair A/B เชื่อม F1↔F2↔F3
-```
-
-### สูตรน้ำหนัก Edge (Edge Weight Formula)
-
-```
-weight = (distance / speed) × width_factor × crowd_penalty
+w(e) = d / (v_base × (1 − ρ(e)) × (1 − R(e)))
 ```
 
 | ตัวแปร | ความหมาย |
 |---|---|
-| `distance` | ความยาวเส้นทาง (เมตร) |
-| `speed` | 1.4 m/s (เดินปกติ), 0.6 m/s (บันได) |
-| `width_factor` | `3.0 / width` — ทางแคบ = น้ำหนักสูงขึ้น |
-| `crowd_penalty` | `1 + density × 3` — ฝูงชนแน่น = ช้าลง 4× |
+| `d` | ความยาวเส้นทาง (เมตร) |
+| `v_base` | 1.4 m/s (ทางเดิน), 0.6 m/s (บันได) |
+| `ρ(e)` | crowd density ∈ [0, 1) |
+| `R(e)` | smoke/risk level ∈ [0, 1] |
+
+กรณีพิเศษ: `R(e) ≥ 0.9` → `w(e) = ∞` (ผ่านไม่ได้)
+
+---
+
+### 2. Smoke Propagation Formula
+
+```
+s(e) = s_fire × exp(−λ × dist(e, fire)) × φ(θ_wind)
+```
+
+| ตัวแปร | ค่า |
+|---|---|
+| `s_fire` | 1.0 (ความรุนแรงไฟเต็ม) |
+| `λ` | 0.15 (decay rate ต่อเมตร) |
+| `dist(e, fire)` | ระยะจาก edge midpoint ถึง fire node (เมตร) |
+| `φ` | `1.0 + 0.5 × cos(angle between edge และ wind direction)` |
+
+threshold: `s ≥ 0.9` → `w(e) = ∞`, `s < 0.9` → ส่ง R(e) = s เข้าสูตร weight
+
+---
+
+### 3. Safety Score
+
+```
+S = 40 × min(1, N_exit / (V_total / 5))
+  + 30 × min(1, C_min_cut / (P_total / 10))
+  + 30 × (λ(G) / (k + 1))
+```
+
+| ตัวแปร | ความหมาย |
+|---|---|
+| `N_exit` | จำนวน exit nodes |
+| `V_total` | จำนวน nodes ทั้งหมด |
+| `C_min_cut` | ขนาด minimum edge cut |
+| `P_total` | ผลรวม capacity ของ non-exit nodes |
+| `λ(G)` | edge connectivity (`nx.edge_connectivity`) |
+| `k` | 1 (target fault tolerance) |
+
+Grade: A (≥80), B (≥65), C (≥50), D (≥35), F (<35)
+
+---
+
+### 4. Fire Spread Formula
+
+```
+v_fire(e) = V_BASE × type_mult × width_factor × wind_factor
+t_spread(e) = distance_m / v_fire(e)
+```
+
+| ตัวแปร | ค่า |
+|---|---|
+| `V_BASE` | 0.02 m/s |
+| `type_mult` | room=1.0, corridor=1.5, stair=2.5, exit=0.5 |
+| `width_factor` | `min(1.0, width_m / 2.0)` |
+| `wind_factor` | `1.0 + 0.8 × max(0, cos_angle) × (wind_speed / 5.0)` |
+
+Algorithm: Dijkstra จาก fire source — minimize cumulative `t_spread`
 
 ---
 
@@ -73,88 +125,82 @@ weight = (distance / speed) × width_factor × crowd_penalty
 - ความซับซ้อน: **O((V + E) log V)**
 
 ### A*
-- Dijkstra + heuristic `h(n)` = ระยะ Euclidean จาก node ถึงปลายทาง
-- Admissible (h ≤ ต้นทุนจริงเสมอ) → optimal
+- Dijkstra + heuristic `h(n)` = Euclidean distance จาก node ถึงปลายทาง (pixel → เมตร → วินาที)
+- Admissible: `h ≤` ต้นทุนจริงเสมอ → optimal
 - สำรวจ node น้อยกว่า Dijkstra ในทางปฏิบัติ
-
----
-
-## Dynamic Conditions
-
-| สภาวะ | กลไก |
-|---|---|
-| **ควันไฟ (Smoke)** | ตั้ง `weight = ∞` บน edge ที่ถูกควัน → ถือเป็นปิดกั้น |
-| **ทิศทางควัน** | คำนวณจาก wind vector (TMD API) ว่า edge ใดอยู่ใต้ลม |
-| **ฝูงชน (Crowd)** | เพิ่ม weight ผ่าน crowd_penalty ตาม occupancy ratio |
-| **ทางออกพัง** | ลบ node ออกจากกราฟ → recalculate ใหม่อัตโนมัติ |
-
-### Smoke Spread Model
-```
-Wind direction → คำนวณ unit vector W
-For each edge midpoint M:
-  if dist(fire, M) ≤ smoke_radius AND dot(M - fire, W) ≥ 0:
-      → edge นั้นถูกควันปิด
-```
-`smoke_radius` ขยายตามความเร็วลม: `radius_px = base × (1 + wind_speed / 10)`
 
 ---
 
 ## API Endpoints
 
-### `GET /building`
-คืนข้อมูล graph ทั้งอาคาร (สำหรับ Cytoscape.js render เริ่มต้น)
+### Multi-Building (Database-backed)
+
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| `POST` | `/buildings` | สร้าง building ใหม่ |
+| `GET` | `/buildings` | ดู building ทั้งหมด |
+| `GET` | `/buildings/{id}` | ดู building เดียว |
+| `DELETE` | `/buildings/{id}` | ลบ building |
+| `POST` | `/buildings/import` | นำเข้า building + nodes + edges จาก JSON เดียว |
+| `POST` | `/buildings/{id}/evacuate` | จำลองการอพยพ (Dijkstra/A*) |
+| `POST` | `/buildings/{id}/evacuate/compare` | เปรียบ Dijkstra vs A* พร้อม smoke |
+| `POST` | `/buildings/{id}/fire/spread` | คำนวณเวลาไฟลามถึงแต่ละ node |
+| `POST` | `/buildings/{id}/smoke/propagate` | คำนวณ smoke level ทุก edge |
+| `POST` | `/buildings/{id}/nodes` | เพิ่ม node |
+| `POST` | `/buildings/{id}/edges` | เพิ่ม edge |
+| `GET` | `/buildings/{id}/graph` | ดู graph สำหรับ Cytoscape.js |
+| `GET` | `/buildings/{id}/analysis` | safety score + bottleneck + max-flow |
+| `POST` | `/buildings/{id}/incidents` | รายงานเหตุการณ์ (fire/smoke/crowd) |
+
+### Legacy Single-Building
+
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| `GET` | `/building` | graph อาคารตัวอย่าง 3 ชั้น |
+| `POST` | `/evacuate` | จำลองการอพยพ (hardcoded building) |
+| `GET` | `/weather` | ข้อมูลสภาพอากาศจาก TMD API |
+| `GET` | `/health` | liveness check |
+
+---
+
+### ตัวอย่าง Request — สร้าง Building
 
 ```json
+POST /buildings
 {
-  "graph": { "nodes": [...], "edges": [...] },
-  "exits": ["exit1", "exit2", "exit3"],
-  "node_count": 21,
-  "edge_count": 22
+  "name": "อาคาร A",
+  "address": "เชียงใหม่",
+  "tmd_station_id": "503201"
 }
 ```
 
-### `POST /evacuate`
+> `tmd_station_id` ใช้ระบุสถานีตรวจอากาศ TMD ที่ใกล้ building ที่สุด  
+> ถ้าไม่ระบุ จะใช้ค่า default สถานีบางนา กรุงเทพ (`515201`)
 
-**Request body:**
+### ตัวอย่าง Request — จำลองการอพยพ
+
 ```json
+POST /buildings/{id}/evacuate
 {
   "fire_location": "r201",
   "algorithm": "dijkstra",
-  "blocked_exits": ["exit2"],
-  "crowd_densities": [
-    { "node_id": "c2", "density": 0.7 }
-  ],
-  "use_weather_wind": true,
+  "blocked_exits": [],
+  "crowd_densities": [{ "node_key": "c2", "density": 0.7 }],
   "occupied_rooms": ["r101", "r201", "r301"],
+  "use_weather_wind": true,
   "compare_algorithms": true
 }
 ```
 
-**Response:**
-```json
-{
-  "fire_location": "r201",
-  "primary_routes": [
-    {
-      "exit": "exit1",
-      "path": ["r201", "c2", "stair_a_f2", "stair_a_f1", "exit1"],
-      "cost_seconds": 106.2,
-      "reachable": true,
-      "algorithm": "dijkstra"
-    }
-  ],
-  "comparison": { "dijkstra": [...], "astar": [...] },
-  "smoke_blocked_edges": [["r202", "c2"]],
-  "removed_exits": ["exit2"],
-  "weather": { "wind_speed_ms": 3.5, "wind_direction_deg": 135, ... },
-  "evacuation_estimate": { "overall_seconds": 142.0, "per_room": {...} },
-  "graph_state": { "nodes": [...], "edges": [...] }
-}
-```
+---
 
-### `GET /weather`
-ดึงข้อมูลสภาพอากาศล่าสุดจาก Thai Meteorological Department API  
-Fallback เป็น mock data อัตโนมัติหาก API ไม่ตอบสนอง
+## Weather Integration
+
+ข้อมูลลมดึงจาก **TMD Open Data API** โดยอัตโนมัติทุก request
+
+- แต่ละ building เก็บ `tmd_station_id` แยกกัน → ลมตรงกับที่ตั้งอาคาร
+- Fallback เป็น mock data (`wind=3.5 m/s, dir=135°`) หาก API ไม่ตอบสนอง
+- Override ด้วยมือได้: ส่ง `use_weather_wind: false` + `manual_wind_direction` + `manual_wind_speed`
 
 ---
 
@@ -162,26 +208,45 @@ Fallback เป็น mock data อัตโนมัติหาก API ไม�
 
 ```
 Emergency/
-├── render.yaml                  # Render deployment config
-├── .gitignore
+├── evacuation_report_final.pdf   # รายงานทางคณิตศาสตร์ (แหล่งที่มาสูตร)
+├── render.yaml                   # Render deployment config
 │
 ├── backend/
-│   ├── main.py                  # FastAPI app + endpoints
-│   ├── graph_builder.py         # Building graph (NetworkX)
-│   ├── pathfinding.py           # Dijkstra + A* implementations
-│   ├── weather.py               # TMD API + smoke spread model
+│   ├── main.py                   # FastAPI app + legacy endpoints
+│   ├── database.py               # SQLAlchemy setup (SQLite / PostgreSQL)
+│   ├── models.py                 # ORM: Building, Floor, Node, Edge, Incident
+│   ├── schemas.py                # Pydantic request/response schemas
+│   ├── graph_builder.py          # Building graph + weight formula
+│   ├── dynamic_graph.py          # DB → NetworkX graph builder
+│   ├── pathfinding.py            # Dijkstra + A* implementations
+│   ├── fire_spread.py            # Physics-based fire spread (Dijkstra)
+│   ├── smoke_propagation.py      # Continuous smoke level model
+│   ├── analysis.py               # Safety score, bottleneck, max-flow
+│   ├── weather.py                # TMD API integration
+│   ├── storage.py                # File upload (local / Supabase)
+│   ├── seed_demo.py              # Demo data seeder
+│   ├── routers/
+│   │   ├── buildings.py          # Building CRUD + simulation endpoints
+│   │   ├── incidents.py          # Incident reporting
+│   │   └── analysis.py           # Analysis endpoints
+│   ├── test_graph_builder.py
+│   ├── test_pathfinding.py
+│   ├── test_smoke_propagation.py
+│   ├── test_analysis.py
+│   ├── test_fire_spread.py
 │   └── requirements.txt
 │
 └── frontend/
     ├── package.json
-    ├── .env                     # REACT_APP_API_URL
+    ├── .env                      # REACT_APP_API_URL
     └── src/
-        ├── index.js
-        ├── App.jsx              # Root component + API calls
+        ├── App.jsx
         └── components/
-            ├── BuildingMap.jsx  # Cytoscape.js interactive floor plan
-            ├── ControlPanel.jsx # Fire/crowd/wind controls
-            └── ResultsTable.jsx # Routes + comparison table
+            ├── BuildingMap.jsx   # Cytoscape.js interactive floor plan
+            ├── ControlPanel.jsx  # Fire/crowd/wind controls
+            ├── IncidentPanel.jsx # Incident reporting UI
+            ├── AnalysisPanel.jsx # Safety score + bottleneck display
+            └── ResultsTable.jsx  # Routes + comparison table
 ```
 
 ---
@@ -201,15 +266,24 @@ npm start
 # เปิด http://localhost:3000
 ```
 
+### Run Tests
+
+```bash
+cd backend
+pip install pytest
+pytest test_graph_builder.py test_pathfinding.py test_smoke_propagation.py \
+       test_analysis.py test_fire_spread.py -v
+# 114 passed
+```
+
 ---
 
 ## Deploy บน Render
 
-### 1. Deploy Backend ก่อน
+### 1. Deploy Backend
 1. [render.com](https://render.com) → **New → Blueprint** → เชื่อม GitHub repo
-2. Render อ่าน `render.yaml` อัตโนมัติ → สร้าง 2 services
-3. รอ `evacuation-backend` build เสร็จ → copy URL  
-   เช่น `https://evacuation-backend.onrender.com`
+2. Render อ่าน `render.yaml` → สร้าง 2 services อัตโนมัติ
+3. รอ `evacuation-backend` build เสร็จ → copy URL
 
 ### 2. ตั้งค่า Frontend
 Dashboard → `evacuation-frontend` → **Environment** → เพิ่ม:
@@ -220,27 +294,28 @@ REACT_APP_API_URL = https://evacuation-backend.onrender.com
 
 กด **Manual Deploy** → frontend rebuild พร้อม URL จริง
 
-> **Note:** Free plan จะ spin-down หลัง 15 นาที idle  
-> request แรกอาจช้า ~30 วินาที
+> **Note:** Free plan spin-down หลัง 15 นาที idle — request แรกอาจช้า ~30 วินาที
 
 ---
 
 ## Sample Test (cURL)
 
 ```bash
-# ดู building graph
-curl http://localhost:8000/building | jq '.node_count'
+# สร้าง building พร้อม TMD station เชียงใหม่
+curl -X POST http://localhost:8000/buildings \
+  -H "Content-Type: application/json" \
+  -d '{"name": "อาคาร A", "address": "เชียงใหม่", "tmd_station_id": "503201"}'
 
-# จำลองไฟไหม้ที่ r201 ฝูงชนแน่นในทางเดิน
-curl -X POST http://localhost:8000/evacuate \
+# จำลองไฟไหม้ที่ r201 พร้อมลมจริงจาก TMD
+curl -X POST http://localhost:8000/buildings/1/evacuate \
   -H "Content-Type: application/json" \
   -d '{
     "fire_location": "r201",
-    "algorithm": "dijkstra",
-    "crowd_densities": [{"node_id": "c2", "density": 0.8}],
-    "occupied_rooms": ["r101","r201","r301"],
-    "use_weather_wind": false,
-    "manual_wind_direction": 90,
-    "manual_wind_speed": 5.0
+    "crowd_densities": [{"node_key": "c2", "density": 0.7}],
+    "occupied_rooms": ["r101", "r201", "r301"],
+    "use_weather_wind": true
   }' | jq '.primary_routes[0]'
+
+# ดู safety score
+curl http://localhost:8000/buildings/1/analysis | jq '.safety_score'
 ```
