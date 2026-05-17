@@ -1,18 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-
 import { login, register } from '../api/client';
-
-const fieldStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 12px',
-  borderRadius: 6,
-  background: '#0f172a',
-  color: '#f1f5f9',
-  border: '1px solid #334155',
-  fontSize: 14,
-  marginBottom: 12,
-};
+import '../styles.css';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -38,52 +27,92 @@ export default function Register() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh', background: '#0f172a', color: '#f1f5f9',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <form
-        onSubmit={submit}
-        style={{
-          background: '#1e293b', border: '1px solid #334155', borderRadius: 12,
-          padding: 28, width: 360, boxShadow: '0 10px 30px rgba(0,0,0,0.4)',
-        }}
-      >
-        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 18 }}>
-          🚨 สมัครสมาชิก
-        </h1>
+    <div className="login-screen">
+      <div className="login-bg">
+        <svg width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 800 600">
+          <defs>
+            <pattern id="bg-dots-reg" width="32" height="32" patternUnits="userSpaceOnUse">
+              <circle cx="1" cy="1" r="1" fill="var(--line-1)" />
+            </pattern>
+          </defs>
+          <rect width="800" height="600" fill="url(#bg-dots-reg)" />
+          {[60, 180, 300, 420].map((y, i) => (
+            <g key={i} opacity="0.4">
+              <rect x="100" y={y} width="600" height="80" fill="none" stroke="var(--line-1)" strokeDasharray="2 4" />
+              <line x1="100" y1={y + 40} x2="700" y2={y + 40} stroke="var(--accent-cyan)" strokeOpacity="0.18" />
+            </g>
+          ))}
+        </svg>
+      </div>
 
-        <label style={{ fontSize: 12, color: '#94a3b8' }}>อีเมล</label>
-        <input
-          type="email" autoFocus required style={fieldStyle}
-          value={email} onChange={(e) => setEmail(e.target.value)}
-        />
-
-        <label style={{ fontSize: 12, color: '#94a3b8' }}>รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)</label>
-        <input
-          type="password" required minLength={8} style={fieldStyle}
-          value={password} onChange={(e) => setPassword(e.target.value)}
-        />
-
-        {error && (
-          <div style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>⚠ {error}</div>
-        )}
-
-        <button
-          type="submit" disabled={busy}
-          style={{
-            width: '100%', padding: '10px 0', borderRadius: 8, border: 'none',
-            background: busy ? '#475569' : '#16a34a', color: '#fff',
-            fontSize: 14, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {busy ? 'กำลังสมัคร…' : 'สมัครสมาชิก'}
-        </button>
-
-        <div style={{ marginTop: 14, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          มีบัญชีอยู่แล้ว? <Link to="/login" style={{ color: '#60a5fa' }}>เข้าสู่ระบบ</Link>
+      <div className="login-card">
+        <div className="login-brand">
+          <svg viewBox="0 0 24 24" width="36" height="36">
+            <rect x="2" y="2" width="20" height="20" rx="2" fill="none" stroke="var(--accent-cyan)" strokeWidth="1.5"/>
+            <line x1="2" y1="9" x2="22" y2="9" stroke="var(--accent-cyan)" strokeWidth="1.5"/>
+            <line x1="2" y1="16" x2="22" y2="16" stroke="var(--accent-cyan)" strokeWidth="1.5"/>
+            <circle cx="17" cy="6" r="1.5" fill="var(--accent-red)">
+              <animate attributeName="opacity" values="1;0.2;1" dur="1.4s" repeatCount="indefinite" />
+            </circle>
+          </svg>
+          <div>
+            <div className="login-title mono">EVAC<span style={{color:'var(--accent-cyan)'}}>·</span>OPS</div>
+            <div className="mono small dim">Building Evacuation Simulation</div>
+          </div>
         </div>
-      </form>
+
+        <div className="login-tabs">
+          <Link to="/login" className="login-tab" style={{textDecoration:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>เข้าสู่ระบบ</Link>
+          <button className="login-tab on">สมัครสมาชิก</button>
+        </div>
+
+        <form className="login-form" onSubmit={submit}>
+          <div className="form-row">
+            <label className="mono micro dim">อีเมล</label>
+            <input
+              className="input" type="email" required autoFocus
+              placeholder="operator@evacops.local"
+              value={email} onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="form-row">
+            <label className="mono micro dim">รหัสผ่าน (อย่างน้อย 8 ตัวอักษร)</label>
+            <input
+              className="input" type="password" required minLength={8}
+              value={password} onChange={e => setPassword(e.target.value)}
+            />
+          </div>
+
+          {error && (
+            <div className="mono small" style={{color:'var(--accent-red)',marginBottom:8}}>⚠ {error}</div>
+          )}
+
+          <button type="submit" className="primary-btn" disabled={busy}>
+            {busy ? 'กำลังสมัคร…' : 'สมัครสมาชิก →'}
+          </button>
+
+          <div className="login-foot mono micro dim">
+            <span>API: <span className="accent-cyan">evacops.local</span></span>
+            <span>·</span>
+            <span>JWT 24h · TLS 1.3</span>
+          </div>
+        </form>
+      </div>
+
+      <div className="login-side">
+        <div className="mono micro dim" style={{marginBottom: 8}}>SYSTEM STATUS</div>
+        {[
+          ['API gateway', 'OPERATIONAL', 'lime'],
+          ['NetworkX engine', 'OPERATIONAL', 'lime'],
+          ['TMD weather feed', 'OPERATIONAL', 'lime'],
+        ].map(([n, s, t]) => (
+          <div key={n} className="status-line">
+            <span className={`status-dot dot-${t}`} />
+            <span className="mono small">{n}</span>
+            <span className="mono micro dim grow right">{s}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

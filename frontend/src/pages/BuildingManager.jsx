@@ -1,36 +1,82 @@
+/**
+ * BuildingManager — EVAC·OPS hi-fi design.
+ * Route: /
+ */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { http } from '../api/client';
+import { ManagerTopBar } from '../js/TopBar';
+import '../styles.css';
 
-const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+function BuildingMiniMap({ floors = 3 }) {
+  return (
+    <svg viewBox="0 0 220 120" preserveAspectRatio="xMidYMid meet" className="mini-map">
+      <rect width="220" height="120" fill="var(--bg-1)" />
+      {Array.from({length: floors}).map((_, i) => {
+        const y = 14 + i * (90 / floors);
+        const h = 80 / floors;
+        return (
+          <g key={i}>
+            <rect x="14" y={y} width="192" height={h} fill="none" stroke="var(--line-1)" strokeDasharray="2 3" />
+            {[0,1,2,3,4].map(j => (
+              <rect key={j} x={28 + j*38} y={y + 4} width="24" height={Math.max(8, h - 8)} fill="var(--bg-3)" stroke="var(--line-2)" />
+            ))}
+            <line x1="14" y1={y + h/2} x2="206" y2={y + h/2} stroke="var(--accent-cyan)" strokeOpacity="0.35" strokeWidth="0.8" />
+          </g>
+        );
+      })}
+      <circle cx="10" cy="108" r="3" fill="var(--accent-lime)" />
+      <circle cx="210" cy="108" r="3" fill="var(--accent-lime)" />
+    </svg>
+  );
+}
 
-const s = {
-  page:    { minHeight: '100vh', background: '#0f172a', color: '#f1f5f9', fontFamily: 'sans-serif' },
-  header:  { background: '#1e293b', borderBottom: '1px solid #334155', padding: '14px 28px', display: 'flex', alignItems: 'center', gap: 16 },
-  title:   { fontSize: 18, fontWeight: 700, color: '#f8fafc' },
-  content: { padding: 28, maxWidth: 900, margin: '0 auto' },
-  section: { background: '#1e293b', borderRadius: 10, padding: 20, marginBottom: 24 },
-  label:   { fontSize: 12, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6, display: 'block' },
-  input:   { width: '100%', padding: '8px 12px', borderRadius: 6, background: '#0f172a', border: '1px solid #475569', color: '#f1f5f9', fontSize: 14, boxSizing: 'border-box', marginBottom: 10 },
-  btn:     { padding: '8px 18px', borderRadius: 6, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 14 },
-  btnPrimary: { background: '#3b82f6', color: '#fff' },
-  btnDanger:  { background: '#ef4444', color: '#fff' },
-  btnGhost:   { background: '#334155', color: '#cbd5e1' },
-  card:    { background: '#0f172a', borderRadius: 8, padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #334155' },
-  cardName: { fontSize: 16, fontWeight: 600, color: '#f1f5f9', marginBottom: 2 },
-  cardSub:  { fontSize: 12, color: '#64748b' },
-  error:   { color: '#f87171', fontSize: 13, marginTop: 8 },
-  actions: { display: 'flex', gap: 8 },
-};
+function BuildingCard({ b, onEdit, onSimulate, onDelete }) {
+  const nodeCount = b.node_count || b.nodes || 0;
+  const edgeCount = b.edge_count || b.edges || 0;
+  const score = b.safety_score ?? b.score ?? '—';
+  const grade = b.safety_grade || b.grade || '—';
+  const gradeColor = { A: 'lime', B: 'cyan', C: 'amber', D: 'amber', F: 'red' }[grade] || 'ink';
+  const floors = Math.max(2, Math.min(5, Math.round(nodeCount / 12)));
+
+  return (
+    <div className="b-card">
+      <div className="b-card-thumb">
+        <BuildingMiniMap floors={floors} />
+        <div className={`b-grade tone-${gradeColor}`}>
+          <span className="mono big-grade">{grade}</span>
+          <span className="mono micro dim">SCORE {score}</span>
+        </div>
+      </div>
+      <div className="b-card-body">
+        <div className="b-card-name">{b.name}</div>
+        {b.address && <div className="b-card-sub mono small dim">📍 {b.address}</div>}
+        <div className="b-card-stats">
+          <div><span className="mono small">{nodeCount}</span> <span className="mono micro dim">NODES</span></div>
+          <div><span className="mono small">{edgeCount}</span> <span className="mono micro dim">EDGES</span></div>
+          <div><span className="mono small">{b.description?.match(/\d+ ชั้น/)?.[0] || '—'}</span></div>
+        </div>
+        <div className="b-card-meta mono micro dim">
+          สร้าง: {b.created_at ? new Date(b.created_at).toLocaleDateString('th-TH') : '—'}
+        </div>
+      </div>
+      <div className="b-card-foot">
+        <button className="ghost-btn mono small" onClick={onEdit}>✎ EDIT</button>
+        <button className="primary-btn small" onClick={onSimulate}>▶ SIMULATE</button>
+        <button className="icon-danger" title="ลบอาคาร" onClick={onDelete}>🗑</button>
+      </div>
+    </div>
+  );
+}
 
 const JSON_PLACEHOLDER = `{
   "name": "อาคาร IT",
   "address": "คณะวิทยาศาสตร์และเทคโนโลยี",
   "description": "3 ชั้น 90 คน",
   "nodes": [
-    {"node_key": "r101", "type": "room",     "label": "ห้อง 101",   "x": 100, "y": 480, "capacity": 30, "floor_number": 1},
-    {"node_key": "c1",   "type": "corridor", "label": "ทางเดิน 1", "x": 280, "y": 500, "capacity": 0,  "floor_number": 1},
-    {"node_key": "e1",   "type": "exit",     "label": "ทางออก 1",  "x": 480, "y": 500, "capacity": 0,  "floor_number": 1}
+    {"node_key": "r101", "type": "room", "label": "ห้อง 101", "x": 220, "y": 610, "capacity": 30, "floor_number": 1},
+    {"node_key": "c1",   "type": "corridor", "label": "ทางเดิน 1", "x": 480, "y": 700, "capacity": 0,  "floor_number": 1},
+    {"node_key": "e1",   "type": "exit",     "label": "ทางออก 1",  "x": 30,  "y": 700, "capacity": 0,  "floor_number": 1}
   ],
   "edges": [
     {"u_key": "r101", "v_key": "c1", "distance_m": 12, "width_m": 2, "is_stair": false},
@@ -41,28 +87,30 @@ const JSON_PLACEHOLDER = `{
 export default function BuildingManager() {
   const navigate = useNavigate();
   const [buildings, setBuildings] = useState([]);
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [description, setDescription] = useState('');
-  const [error, setError] = useState(null);
-  const [jsonText, setJsonText] = useState('');
+  const [filter, setFilter]       = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [jsonText, setJsonText]   = useState('');
   const [jsonError, setJsonError] = useState(null);
   const [jsonSuccess, setJsonSuccess] = useState(null);
-  const [jsonOpen, setJsonOpen] = useState(false);
+  const [addOpen, setAddOpen]     = useState(false);
+  const [newName, setNewName]     = useState('');
+  const [newAddr, setNewAddr]     = useState('');
+  const [newDesc, setNewDesc]     = useState('');
+  const [addError, setAddError]   = useState(null);
 
   const load = () =>
-    axios.get(`${API}/buildings`).then(r => setBuildings(r.data)).catch(() => {});
+    http.get('/buildings').then(r => setBuildings(r.data)).catch(() => {});
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async () => {
-    if (!name.trim()) { setError('กรุณากรอกชื่ออาคาร'); return; }
+    if (!newName.trim()) { setAddError('กรุณากรอกชื่ออาคาร'); return; }
     try {
-      await axios.post(`${API}/buildings`, { name: name.trim(), address, description });
-      setName(''); setAddress(''); setDescription(''); setError(null);
+      await http.post('/buildings', { name: newName.trim(), address: newAddr, description: newDesc });
+      setNewName(''); setNewAddr(''); setNewDesc(''); setAddError(null); setAddOpen(false);
       load();
     } catch (e) {
-      setError(e.response?.data?.detail || 'เกิดข้อผิดพลาด');
+      setAddError(e.response?.data?.detail || 'เกิดข้อผิดพลาด');
     }
   };
 
@@ -72,9 +120,10 @@ export default function BuildingManager() {
     try { payload = JSON.parse(jsonText); }
     catch { setJsonError('JSON ไม่ถูกต้อง — ตรวจสอบ syntax อีกครั้ง'); return; }
     try {
-      const { data } = await axios.post(`${API}/buildings/import`, payload);
+      const { data } = await http.post('/buildings/import', payload);
       setJsonSuccess(`✓ นำเข้าสำเร็จ: "${data.name}" (${data.nodes_created} nodes, ${data.edges_created} edges)`);
       setJsonText('');
+      setImportOpen(false);
       load();
     } catch (e) {
       setJsonError(e.response?.data?.detail || 'นำเข้าไม่สำเร็จ');
@@ -92,106 +141,97 @@ export default function BuildingManager() {
 
   const remove = async (id) => {
     if (!window.confirm('ลบอาคารนี้? ข้อมูลทั้งหมดจะหายถาวร')) return;
-    await axios.delete(`${API}/buildings/${id}`);
+    await http.delete(`/buildings/${id}`);
     load();
   };
 
+  const filtered = buildings.filter(b =>
+    b.name.toLowerCase().includes(filter.toLowerCase()) ||
+    (b.address || '').toLowerCase().includes(filter.toLowerCase()));
+
   return (
-    <div style={s.page}>
-      <div style={s.header}>
-        <span style={s.title}>🏢 ระบบแผนผังอาคาร</span>
-        <span style={{ fontSize: 12, color: '#64748b' }}>Building Evacuation Simulation v2</span>
-      </div>
+    <div className="screen-page">
+      <ManagerTopBar activeTab="manager" />
 
-      <div style={s.content}>
-        {/* Create form */}
-        <div style={s.section}>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: '#f1f5f9' }}>เพิ่มอาคารใหม่</div>
-          <label style={s.label}>ชื่ออาคาร *</label>
-          <input style={s.input} placeholder="เช่น อาคาร A, ตึก IT" value={name}
-            onChange={e => setName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && create()} />
-          <label style={s.label}>ที่อยู่</label>
-          <input style={s.input} placeholder="เช่น 123 ถ.พหลโยธิน กรุงเทพ" value={address}
-            onChange={e => setAddress(e.target.value)} />
-          <label style={s.label}>รายละเอียด</label>
-          <input style={s.input} placeholder="เช่น 3 ชั้น 90 คน" value={description}
-            onChange={e => setDescription(e.target.value)} />
-          {error && <div style={s.error}>⚠ {error}</div>}
-          <button style={{ ...s.btn, ...s.btnPrimary, marginTop: 8 }} onClick={create}>+ เพิ่มอาคาร</button>
-        </div>
-
-        {/* JSON Import */}
-        <div style={s.section}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: jsonOpen ? 14 : 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>📥 นำเข้าจาก JSON</div>
-            <button style={{ ...s.btn, ...s.btnGhost, fontSize: 12 }} onClick={() => { setJsonOpen(o => !o); setJsonError(null); setJsonSuccess(null); }}>
-              {jsonOpen ? '▲ ซ่อน' : '▼ เปิด'}
+      <div className="page-body">
+        <header className="page-header">
+          <div>
+            <div className="mono micro dim">FACILITY OPS · BUILDINGS</div>
+            <h1 className="page-title">อาคารทั้งหมด</h1>
+            <div className="mono small dim">{buildings.length} อาคาร</div>
+          </div>
+          <div className="header-actions">
+            <button className="ghost-btn mono small" onClick={() => { setImportOpen(o => !o); setJsonError(null); setJsonSuccess(null); }}>
+              {importOpen ? '▴ ปิด JSON' : '⬆ นำเข้า JSON'}
             </button>
+            <button className="primary-btn small" onClick={() => setAddOpen(o => !o)}>+ เพิ่มอาคาร</button>
           </div>
+        </header>
 
-          {jsonOpen && (
-            <>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-                <label style={{ ...s.btn, ...s.btnGhost, fontSize: 12, cursor: 'pointer' }}>
-                  📂 เลือกไฟล์ .json
-                  <input type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={loadJsonFile} />
-                </label>
-                <span style={{ fontSize: 12, color: '#475569' }}>หรือวาง JSON ด้านล่าง</span>
-              </div>
-              <textarea
-                style={{
-                  ...s.input, fontFamily: 'monospace', fontSize: 12,
-                  height: 220, resize: 'vertical', marginBottom: 4,
-                }}
-                placeholder={JSON_PLACEHOLDER}
-                value={jsonText}
-                onChange={e => setJsonText(e.target.value)}
-              />
-              <div style={{ fontSize: 11, color: '#475569', marginBottom: 8 }}>
-                fields ที่ต้องการ: <code style={{ color: '#94a3b8' }}>name</code>,{' '}
-                <code style={{ color: '#94a3b8' }}>nodes[]</code> (node_key, type, label, x, y, capacity, floor_number),{' '}
-                <code style={{ color: '#94a3b8' }}>edges[]</code> (u_key, v_key, distance_m, width_m, is_stair)
-              </div>
-              {jsonError   && <div style={{ color: '#f87171', fontSize: 13, marginBottom: 8 }}>⚠ {jsonError}</div>}
-              {jsonSuccess && <div style={{ color: '#4ade80', fontSize: 13, marginBottom: 8 }}>{jsonSuccess}</div>}
-              <button style={{ ...s.btn, ...s.btnPrimary }} onClick={importJson} disabled={!jsonText.trim()}>
-                ⬆ Import อาคาร
-              </button>
-            </>
-          )}
+        <div className="filter-bar">
+          <span className="mono micro dim">FILTER</span>
+          <input className="filter-input" placeholder="ค้นหาด้วยชื่อ / ที่อยู่…"
+            value={filter} onChange={e => setFilter(e.target.value)} />
         </div>
 
-        {/* Building list */}
-        <div style={s.section}>
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 14, color: '#f1f5f9' }}>
-            อาคารทั้งหมด ({buildings.length})
-          </div>
-          {buildings.length === 0 && (
-            <div style={{ color: '#475569', textAlign: 'center', padding: 24 }}>ยังไม่มีอาคาร — เพิ่มอาคารแรกได้เลย</div>
-          )}
-          {buildings.map(b => (
-            <div key={b.id} style={s.card}>
-              <div>
-                <div style={s.cardName}>{b.name}</div>
-                {b.address && <div style={s.cardSub}>📍 {b.address}</div>}
-                {b.description && <div style={s.cardSub}>📝 {b.description}</div>}
-                <div style={{ ...s.cardSub, marginTop: 2 }}>
-                  สร้าง: {new Date(b.created_at).toLocaleDateString('th-TH')}
-                </div>
-              </div>
-              <div style={s.actions}>
-                <button style={{ ...s.btn, ...s.btnGhost }} onClick={() => navigate(`/buildings/${b.id}/edit`)}>
-                  ✏️ แก้ไขแปลน
-                </button>
-                <button style={{ ...s.btn, ...s.btnPrimary }} onClick={() => navigate(`/buildings/${b.id}/simulate`)}>
-                  🚨 จำลองอพยพ
-                </button>
-                <button style={{ ...s.btn, ...s.btnDanger }} onClick={() => remove(b.id)}>
-                  🗑
-                </button>
-              </div>
+        {addOpen && (
+          <div className="import-card">
+            <div className="import-card-head">
+              <span className="mono small">เพิ่มอาคารใหม่</span>
+              <span className="mono micro dim">กรอกข้อมูลเพื่อเพิ่มอาคาร</span>
             </div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,padding:'0 0 8px'}}>
+              <input className="input" placeholder="ชื่ออาคาร *" value={newName} onChange={e => setNewName(e.target.value)} />
+              <input className="input" placeholder="ที่อยู่" value={newAddr} onChange={e => setNewAddr(e.target.value)} />
+              <input className="input" placeholder="รายละเอียด เช่น 3 ชั้น 90 คน" value={newDesc} onChange={e => setNewDesc(e.target.value)} />
+              {addError && <div className="mono small" style={{color:'var(--accent-red)'}}>⚠ {addError}</div>}
+            </div>
+            <div className="import-card-foot">
+              <button className="ghost-btn mono small" onClick={() => setAddOpen(false)}>ยกเลิก</button>
+              <span style={{marginLeft:'auto'}} />
+              <button className="primary-btn small" onClick={create}>+ เพิ่มอาคาร</button>
+            </div>
+          </div>
+        )}
+
+        {importOpen && (
+          <div className="import-card">
+            <div className="import-card-head">
+              <span className="mono small">JSON IMPORT</span>
+              <span className="mono micro dim">name, nodes[], edges[]</span>
+            </div>
+            <textarea className="json-area" rows="6"
+              placeholder={JSON_PLACEHOLDER}
+              value={jsonText}
+              onChange={e => setJsonText(e.target.value)} />
+            {jsonError   && <div className="mono small" style={{color:'var(--accent-red)',padding:'4px 0'}}>⚠ {jsonError}</div>}
+            {jsonSuccess && <div className="mono small" style={{color:'var(--accent-lime)',padding:'4px 0'}}>{jsonSuccess}</div>}
+            <div className="import-card-foot">
+              <label className="ghost-btn mono small" style={{cursor:'pointer'}}>
+                📂 เลือกไฟล์
+                <input type="file" accept=".json,application/json" style={{display:'none'}} onChange={loadJsonFile} />
+              </label>
+              <span className="mono micro dim">หรือลากวางที่นี่</span>
+              <span style={{marginLeft:'auto'}} />
+              <button className="primary-btn small" onClick={importJson} disabled={!jsonText.trim()}>⬆ Import อาคาร</button>
+            </div>
+          </div>
+        )}
+
+        {filtered.length === 0 && (
+          <div style={{textAlign:'center',padding:'40px 0',color:'var(--ink-3)'}}>
+            <div className="mono small dim">ยังไม่มีอาคาร — เพิ่มอาคารแรกได้เลย</div>
+          </div>
+        )}
+
+        <div className="building-grid">
+          {filtered.map(b => (
+            <BuildingCard
+              key={b.id} b={b}
+              onEdit={() => navigate(`/buildings/${b.id}/edit`)}
+              onSimulate={() => navigate(`/buildings/${b.id}/simulate`)}
+              onDelete={() => remove(b.id)}
+            />
           ))}
         </div>
       </div>

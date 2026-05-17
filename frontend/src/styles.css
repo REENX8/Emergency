@@ -508,3 +508,28 @@ input, select, textarea { background: transparent; border: none; outline: none; 
 .login-foot { display: flex; justify-content: center; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line-1); margin-top: 6px; }
 .login-side { grid-column: 3; align-self: stretch; padding: 28px 24px; background: var(--bg-1); border-left: 1px solid var(--line-1); position: relative; z-index: 1; }
 .status-line { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line-1); }
+
+/* ── Extra helpers ───────────────────────────────────────────────── */
+.save-state { display: flex; align-items: center; gap: 6px; }
+.wind-dial { display: block; }
+.rail-right { overflow-y: auto; }
+.rail-right::-webkit-scrollbar { width: 6px; }
+.rail-right::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 3px; }
+
+/* Override body overflow for login page */
+.login-screen ~ body { overflow: auto; }
+
+/* Responsive login */
+@media (max-width: 900px) {
+  .login-screen { grid-template-columns: 1fr; grid-template-rows: auto; }
+  .login-card { grid-column: 1; margin: 24px auto; width: 90%; max-width: 420px; }
+  .login-side { display: none; }
+}
+
+/* node-selector fallback when no floor data */
+.node-selector { }
+
+/* Editor canvas host flex */
+.canvas-host { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.canvas-host svg { flex: 1; }
+
