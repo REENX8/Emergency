@@ -7,7 +7,7 @@ services:
       # Leave DATABASE_URL unset to use the bundled SQLite file inside the
       # container; set it to a Supabase / Postgres URL for production-like
       # behaviour. The CRA dev server isn't talking to this container.
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:3001,http://localhost:5173}
     volumes:
       # Persist the SQLite file + uploaded floor plans across restarts.
       - backend-data:/app
@@ -28,6 +28,19 @@ services:
       - backend
     ports:
       - "3000:80"
+
+  user-app:
+    build:
+      context: ./user-app
+      args:
+        # Same pattern as the admin frontend: nginx proxies /api → backend.
+        VITE_API_URL: /api
+    container_name: evacuation-user-app
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "3001:80"
 
 volumes:
   backend-data:
