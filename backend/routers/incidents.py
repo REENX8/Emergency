@@ -16,8 +16,7 @@ router = APIRouter(prefix="/buildings", tags=["incidents"])
 VALID_TYPES = {"fire", "smoke", "crowd"}
 
 
-@router.post("/{building_id}/incidents", response_model=IncidentResponse, status_code=201,
-              dependencies=[Depends(get_current_user)])
+@router.post("/{building_id}/incidents", response_model=IncidentResponse, status_code=201)
 def report_incident(building_id: int, payload: IncidentCreate, db: Session = Depends(get_db)):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
