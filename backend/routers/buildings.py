@@ -6,11 +6,12 @@ import copy
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 import storage
-from auth import get_current_user
+from audit import audit
+from auth import get_current_user, require_role
 from database import get_db
 from dynamic_graph import (
     build_graph_from_db,
@@ -18,8 +19,9 @@ from dynamic_graph import (
     graph_to_cytoscape,
     invalidate_graph_cache,
 )
-from models import Building, Edge, Floor, Node
+from models import Building, Edge, Floor, Node, User
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
+from rate_limit import limiter, user_or_ip
 from schemas import (
     BuildingCreate, BuildingResponse,
     BuildingImportPayload, BuildingImportResponse,
@@ -27,7 +29,14 @@ from schemas import (
     FloorResponse,
     GraphResponse,
     NodeCreate, NodeResponse, NodeUpdate,
+    Page,
 )
+
+# Max upload size for floor images (PNG / JPG / PDF).
+MAX_FLOOR_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+# Default pagination caps for list endpoints.
+DEFAULT_LIMIT = 100
+MAX_LIMIT = 500
 from fire_spread import compute_fire_spread, fire_spread_to_cytoscape
 from smoke_propagation import (
     compute_smoke_levels,
@@ -43,26 +52,41 @@ router = APIRouter(prefix="/buildings", tags=["buildings"])
 # Building CRUD
 # ---------------------------------------------------------------------------
 
-@router.post("", response_model=BuildingResponse, status_code=201,
-              dependencies=[Depends(get_current_user)])
-def create_building(payload: BuildingCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=BuildingResponse, status_code=201)
+def create_building(
+    payload: BuildingCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     building = Building(**payload.model_dump())
     db.add(building)
     db.commit()
     db.refresh(building)
+    audit(db, actor, "building.create", target_type="building", target_id=building.id,
+          payload={"name": building.name})
     return building
 
 
-@router.get("", response_model=list[BuildingResponse])
-def list_buildings(db: Session = Depends(get_db)):
-    return db.query(Building).order_by(Building.created_at.desc()).all()
+@router.get("", response_model=Page[BuildingResponse])
+def list_buildings(
+    db: Session = Depends(get_db),
+    limit:  int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
+):
+    q = db.query(Building).order_by(Building.created_at.desc())
+    total = q.count()
+    items = q.offset(offset).limit(limit).all()
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
 # NOTE: /import must be registered before /{building_id} so FastAPI matches
 # the literal path first instead of treating "import" as a building_id.
-@router.post("/import", response_model=BuildingImportResponse, status_code=201,
-              dependencies=[Depends(get_current_user)])
-def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db)):
+@router.post("/import", response_model=BuildingImportResponse, status_code=201)
+def import_building(
+    payload: BuildingImportPayload,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     """Create a building + all nodes/edges from a single JSON payload."""
     building = Building(
         name=payload.name,
@@ -91,6 +115,8 @@ def import_building(payload: BuildingImportPayload, db: Session = Depends(get_db
 
     db.commit()
     db.refresh(building)
+    audit(db, actor, "building.import", target_type="building", target_id=building.id,
+          payload={"name": building.name, "nodes": len(payload.nodes), "edges": len(payload.edges)})
     return {**building.__dict__, "nodes_created": len(payload.nodes), "edges_created": len(payload.edges)}
 
 
@@ -102,28 +128,34 @@ def get_building(building_id: int, db: Session = Depends(get_db)):
     return b
 
 
-@router.delete("/{building_id}", status_code=204,
-                dependencies=[Depends(get_current_user)])
-def delete_building(building_id: int, db: Session = Depends(get_db)):
+@router.delete("/{building_id}", status_code=204)
+def delete_building(
+    building_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("admin")),
+):
     b = db.get(Building, building_id)
     if not b:
         raise HTTPException(404, detail="Building not found")
+    name = b.name
     db.delete(b)
     db.commit()
+    audit(db, actor, "building.delete", target_type="building", target_id=building_id,
+          payload={"name": name})
 
 
 # ---------------------------------------------------------------------------
 # Floor image upload
 # ---------------------------------------------------------------------------
 
-@router.post("/{building_id}/floors", response_model=FloorResponse, status_code=201,
-              dependencies=[Depends(get_current_user)])
+@router.post("/{building_id}/floors", response_model=FloorResponse, status_code=201)
 async def upload_floor(
     building_id:   int,
-    floor_number:  int         = Form(...),
-    scale_px_per_m: float      = Form(default=6.0),
+    floor_number:  int         = Form(..., ge=-50, le=200),
+    scale_px_per_m: float      = Form(default=6.0, gt=0, le=1000),
     image:         UploadFile  = File(...),
     db:            Session     = Depends(get_db),
+    actor:         User        = Depends(require_role("operator")),
 ):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
@@ -137,6 +169,11 @@ async def upload_floor(
     filename = f"b{building_id}_f{floor_number}_{uuid.uuid4().hex[:8]}.{ext}"
 
     content = await image.read()
+    if len(content) > MAX_FLOOR_IMAGE_BYTES:
+        raise HTTPException(
+            413,
+            detail=f"File too large ({len(content)} bytes). Max {MAX_FLOOR_IMAGE_BYTES} bytes (10 MB).",
+        )
     stored_path = await storage.upload_file(content, filename, image.content_type)
 
     # Try to read image dimensions (PNG/JPG only)
@@ -164,6 +201,8 @@ async def upload_floor(
         existing.scale_px_per_m  = scale_px_per_m
         db.commit()
         db.refresh(existing)
+        audit(db, actor, "floor.replace", target_type="floor", target_id=existing.id,
+              payload={"building_id": building_id, "floor_number": floor_number})
         return existing
 
     floor = Floor(
@@ -177,6 +216,8 @@ async def upload_floor(
     db.add(floor)
     db.commit()
     db.refresh(floor)
+    audit(db, actor, "floor.create", target_type="floor", target_id=floor.id,
+          payload={"building_id": building_id, "floor_number": floor_number})
     return floor
 
 
@@ -191,9 +232,13 @@ def list_floors(building_id: int, db: Session = Depends(get_db)):
 # Node management
 # ---------------------------------------------------------------------------
 
-@router.post("/{building_id}/nodes", response_model=NodeResponse, status_code=201,
-              dependencies=[Depends(get_current_user)])
-def create_node(building_id: int, payload: NodeCreate, db: Session = Depends(get_db)):
+@router.post("/{building_id}/nodes", response_model=NodeResponse, status_code=201)
+def create_node(
+    building_id: int,
+    payload: NodeCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
 
@@ -210,19 +255,35 @@ def create_node(building_id: int, payload: NodeCreate, db: Session = Depends(get
     db.add(node)
     db.commit()
     db.refresh(node)
+    invalidate_graph_cache(building_id)
+    audit(db, actor, "node.create", target_type="node", target_id=node.id,
+          payload={"building_id": building_id, "node_key": node.node_key})
     return node
 
 
-@router.get("/{building_id}/nodes", response_model=list[NodeResponse])
-def list_nodes(building_id: int, db: Session = Depends(get_db)):
+@router.get("/{building_id}/nodes", response_model=Page[NodeResponse])
+def list_nodes(
+    building_id: int,
+    db: Session = Depends(get_db),
+    limit:  int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    offset: int = Query(default=0, ge=0),
+):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
-    return db.query(Node).filter(Node.building_id == building_id).all()
+    q = db.query(Node).filter(Node.building_id == building_id)
+    total = q.count()
+    items = q.offset(offset).limit(limit).all()
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 
-@router.put("/{building_id}/nodes/{node_key}", response_model=NodeResponse,
-             dependencies=[Depends(get_current_user)])
-def update_node(building_id: int, node_key: str, payload: NodeUpdate, db: Session = Depends(get_db)):
+@router.put("/{building_id}/nodes/{node_key}", response_model=NodeResponse)
+def update_node(
+    building_id: int,
+    node_key: str,
+    payload: NodeUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     node = (
         db.query(Node)
         .filter(Node.building_id == building_id, Node.node_key == node_key)
@@ -231,17 +292,24 @@ def update_node(building_id: int, node_key: str, payload: NodeUpdate, db: Sessio
     if not node:
         raise HTTPException(404, detail="Node not found")
 
-    for field, value in payload.model_dump(exclude_none=True).items():
+    updates = payload.model_dump(exclude_none=True)
+    for field, value in updates.items():
         setattr(node, field, value)
     db.commit()
     db.refresh(node)
     invalidate_graph_cache(building_id)
+    audit(db, actor, "node.update", target_type="node", target_id=node.id,
+          payload={"building_id": building_id, "node_key": node_key, "changed": list(updates.keys())})
     return node
 
 
-@router.delete("/{building_id}/nodes/{node_key}", status_code=204,
-                dependencies=[Depends(get_current_user)])
-def delete_node(building_id: int, node_key: str, db: Session = Depends(get_db)):
+@router.delete("/{building_id}/nodes/{node_key}", status_code=204)
+def delete_node(
+    building_id: int,
+    node_key: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     node = (
         db.query(Node)
         .filter(Node.building_id == building_id, Node.node_key == node_key)
@@ -249,6 +317,7 @@ def delete_node(building_id: int, node_key: str, db: Session = Depends(get_db)):
     )
     if not node:
         raise HTTPException(404, detail="Node not found")
+    node_id = node.id
     # Delete adjacent edges too
     db.query(Edge).filter(
         Edge.building_id == building_id,
@@ -256,15 +325,22 @@ def delete_node(building_id: int, node_key: str, db: Session = Depends(get_db)):
     ).delete(synchronize_session=False)
     db.delete(node)
     db.commit()
+    invalidate_graph_cache(building_id)
+    audit(db, actor, "node.delete", target_type="node", target_id=node_id,
+          payload={"building_id": building_id, "node_key": node_key})
 
 
 # ---------------------------------------------------------------------------
 # Edge management
 # ---------------------------------------------------------------------------
 
-@router.post("/{building_id}/edges", response_model=EdgeResponse, status_code=201,
-              dependencies=[Depends(get_current_user)])
-def create_edge(building_id: int, payload: EdgeCreate, db: Session = Depends(get_db)):
+@router.post("/{building_id}/edges", response_model=EdgeResponse, status_code=201)
+def create_edge(
+    building_id: int,
+    payload: EdgeCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
 
@@ -286,6 +362,9 @@ def create_edge(building_id: int, payload: EdgeCreate, db: Session = Depends(get
     db.add(edge)
     db.commit()
     db.refresh(edge)
+    invalidate_graph_cache(building_id)
+    audit(db, actor, "edge.create", target_type="edge", target_id=edge.id,
+          payload={"building_id": building_id, "u": payload.u_key, "v": payload.v_key})
     return edge
 
 
@@ -296,14 +375,21 @@ def list_edges(building_id: int, db: Session = Depends(get_db)):
     return db.query(Edge).filter(Edge.building_id == building_id).all()
 
 
-@router.delete("/{building_id}/edges/{edge_id}", status_code=204,
-                dependencies=[Depends(get_current_user)])
-def delete_edge(building_id: int, edge_id: int, db: Session = Depends(get_db)):
+@router.delete("/{building_id}/edges/{edge_id}", status_code=204)
+def delete_edge(
+    building_id: int,
+    edge_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
     edge = db.query(Edge).filter(Edge.id == edge_id, Edge.building_id == building_id).first()
     if not edge:
         raise HTTPException(404, detail="Edge not found")
     db.delete(edge)
     db.commit()
+    invalidate_graph_cache(building_id)
+    audit(db, actor, "edge.delete", target_type="edge", target_id=edge_id,
+          payload={"building_id": building_id})
 
 
 # ---------------------------------------------------------------------------
@@ -327,20 +413,20 @@ def get_graph(building_id: int, db: Session = Depends(get_db)):
 from pydantic import BaseModel, Field as PField
 
 class CrowdDensityItem(BaseModel):
-    node_key: str
+    node_key: str   = PField(..., min_length=1, max_length=64)
     density:  float = PField(ge=0.0, le=1.0)
 
 
 class EvacuateBuildingRequest(BaseModel):
-    fire_location:      str
-    blocked_exits:      list[str]              = []
-    crowd_densities:    list[CrowdDensityItem] = []
-    use_weather_wind:   bool                   = True
-    manual_wind_direction: Optional[float]     = None
-    manual_wind_speed:     Optional[float]     = None
-    algorithm:          str                    = "dijkstra"
-    compare_algorithms: bool                   = True
-    occupied_rooms:     list[str]              = []
+    fire_location:      str                                          = PField(..., min_length=1, max_length=64)
+    blocked_exits:      list[str]                                    = PField(default_factory=list, max_length=200)
+    crowd_densities:    list[CrowdDensityItem]                       = PField(default_factory=list, max_length=500)
+    use_weather_wind:   bool                                         = True
+    manual_wind_direction: Optional[float]                           = None
+    manual_wind_speed:     Optional[float]                           = None
+    algorithm:          str                                          = PField(default="dijkstra", max_length=20)
+    compare_algorithms: bool                                         = True
+    occupied_rooms:     list[str]                                    = PField(default_factory=list, max_length=500)
 
     model_config = {
         "json_schema_extra": {
@@ -358,7 +444,9 @@ class EvacuateBuildingRequest(BaseModel):
 
 
 @router.post("/{building_id}/evacuate")
+@limiter.limit("30/minute", key_func=user_or_ip)
 async def evacuate_building(
+    request: Request,
     building_id: int,
     req: EvacuateBuildingRequest,
     db: Session = Depends(get_db),
@@ -466,7 +554,9 @@ class CompareRequest(BaseModel):
 
 
 @router.post("/{building_id}/evacuate/compare")
+@limiter.limit("30/minute", key_func=user_or_ip)
 async def compare_evacuation(
+    request: Request,
     building_id: int,
     req: CompareRequest,
     db: Session = Depends(get_db),
@@ -541,7 +631,9 @@ class FireSpreadRequest(BaseModel):
 
 
 @router.post("/{building_id}/fire/spread")
+@limiter.limit("30/minute", key_func=user_or_ip)
 async def fire_spread_endpoint(
+    request: Request,
     building_id: int,
     req: FireSpreadRequest,
     db: Session = Depends(get_db),
@@ -614,7 +706,9 @@ class SmokePropagateRequest(BaseModel):
 
 
 @router.post("/{building_id}/smoke/propagate")
+@limiter.limit("30/minute", key_func=user_or_ip)
 async def propagate_smoke(
+    request: Request,
     building_id: int,
     req: SmokePropagateRequest,
     db: Session = Depends(get_db),

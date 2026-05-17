@@ -160,6 +160,54 @@ Algorithm: Dijkstra จาก fire source — minimize cumulative `t_spread`
 | `GET` | `/health` | liveness check |
 | `POST` | `/metrics/web-vitals` | รับ Core Web Vitals จาก frontend (logging only) |
 
+### Auth (Phase 1: RBAC)
+
+| Method | Endpoint | คำอธิบาย |
+|---|---|---|
+| `POST` | `/auth/register` | สร้าง user ใหม่ — คนแรกได้ role `admin` อัตโนมัติ คนถัดมา default = `operator` |
+| `POST` | `/auth/login` | คืน JWT |
+| `GET` | `/auth/me` | ข้อมูล user + role ปัจจุบัน |
+| `GET` | `/auth/users` | (admin) รายชื่อ user ทั้งหมด |
+| `PATCH` | `/auth/users/{id}/role` | (admin) เปลี่ยน role ของ user — กันลด admin คนสุดท้าย |
+
+---
+
+## Phase 1 — Production Hardening (สิ่งที่เพิ่มล่าสุด)
+
+### Role-based access control (RBAC)
+3 role: `admin` (ลบ building + จัดการ user), `operator` (เขียนทั้งหมด), `viewer` (อ่านอย่างเดียว)
+รายงาน incident จาก mobile user-app ยังเป็น **anonymous** (ไม่ต้อง login) เพื่อความเร่งด่วน
+
+### Pagination
+`GET /buildings`, `GET /buildings/{id}/nodes`, `GET /buildings/{id}/incidents`
+รับ `?limit=&offset=` (default 100, max 500) — คืน envelope `{items, total, limit, offset}`
+
+### Rate limiting (SlowAPI)
+- `/auth/login` — 10 ครั้ง/นาที/IP
+- `/auth/register` — 5 ครั้ง/นาที/IP
+- `POST /buildings/{id}/incidents` (anonymous) — 10 ครั้ง/นาที/IP
+- `POST /buildings/{id}/evacuate*`, `/fire/spread`, `/smoke/propagate` — 30 ครั้ง/นาที/user
+
+ปิดได้ใน test ด้วย `RATE_LIMIT_ENABLED=0`
+
+### Audit logging
+ตาราง `audit_logs` บันทึก: register, login attempts, role change, building CRUD, node/edge mutate, incident report/resolve, floor upload
+
+### Database migrations (Alembic)
+```bash
+cd backend
+alembic upgrade head        # apply all migrations
+alembic stamp 0001_baseline # mark existing DB as caught-up
+alembic downgrade -1        # rollback one
+```
+Migrations อยู่ที่ `backend/alembic/versions/`
+
+### Request validation limits
+- string fields: 64–1000 ตัวอักษร (แล้วแต่ field)
+- array fields: `crowd_densities`, `occupied_rooms` ≤ 500, `blocked_exits` ≤ 200
+- import: `nodes` ≤ 5000, `edges` ≤ 20000
+- floor image upload ≤ 10 MB
+
 ---
 
 ### ตัวอย่าง Request — สร้าง Building
@@ -293,10 +341,12 @@ npm start
 ```bash
 cd backend
 pip install pytest
-pytest test_graph_builder.py test_pathfinding.py test_smoke_propagation.py \
-       test_analysis.py test_fire_spread.py -v
-# 114 passed
+RATE_LIMIT_ENABLED=0 pytest -v
+# 160 passed (พื้นฐาน 114 + auth + RBAC + API integration + pagination + rate limit)
 ```
+
+Rate-limit tests run their own fresh modules so set `RATE_LIMIT_ENABLED=0`
+globally — the dedicated `test_rate_limit.py` re-enables it per test.
 
 ---
 

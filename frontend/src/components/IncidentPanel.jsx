@@ -37,8 +37,9 @@ export default function IncidentPanel({ buildingId, nodes = [], preselectedNode 
 
   const loadIncidents = useCallback(() => {
     if (!buildingId) return;
-    http.get(`/buildings/${buildingId}/incidents?active_only=true`)
-      .then(r => setIncidents(r.data))
+    http.get(`/buildings/${buildingId}/incidents`,
+             { params: { active_only: true, limit: 200 } })
+      .then(r => setIncidents(r.data.items ?? r.data))
       .catch(() => {});
   }, [buildingId]);
 

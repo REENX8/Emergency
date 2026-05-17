@@ -34,6 +34,10 @@ from database import init_db
 import storage
 import weather as weather_mod
 from weather import fetch_weather
+from rate_limit import limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from routers import buildings as buildings_router
 from routers import incidents as incidents_router
 from routers import analysis as analysis_router
@@ -61,6 +65,13 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# Rate limiting — slowapi reads decorators on routes; the middleware
+# threads request context so per-IP buckets work. Limits live in the route
+# decorators themselves (see routers/auth.py, routers/incidents.py).
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # CORS — set ALLOWED_ORIGINS env var to a comma-separated list of origins.
 # Use "*" (the default) to allow all origins; JWT auth is header-based so

@@ -89,4 +89,18 @@ class User(Base):
     id            = Column(Integer, primary_key=True, index=True)
     email         = Column(String, unique=True, nullable=False, index=True)
     password_hash = Column(String, nullable=False)
+    role          = Column(String, nullable=False, default="operator")  # admin / operator / viewer
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    actor_email = Column(String, nullable=True)
+    action      = Column(String, nullable=False, index=True)   # e.g. building.create
+    target_type = Column(String, nullable=True)                # e.g. building / node / incident
+    target_id   = Column(String, nullable=True)
+    payload     = Column(String, default="")                   # JSON-encoded snapshot (short)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

@@ -99,7 +99,9 @@ export default function BuildingManager() {
   const [addError, setAddError]   = useState(null);
 
   const load = () =>
-    http.get('/buildings').then(r => setBuildings(r.data)).catch(() => {});
+    http.get('/buildings', { params: { limit: 500 } })
+        .then(r => setBuildings(r.data.items ?? r.data))
+        .catch(() => {});
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -60,15 +60,16 @@ export default function SimulationPage() {
 
     Promise.all([
       http.get(`/buildings/${buildingId}`),
-      http.get(`/buildings/${buildingId}/nodes`),
+      http.get(`/buildings/${buildingId}/nodes`, { params: { limit: 500 } }),
       http.get(`/buildings/${buildingId}/edges`),
       http.get('/weather').catch(() => ({ data: null })),
-      http.get(`/buildings/${buildingId}/incidents`).catch(() => ({ data: [] })),
+      http.get(`/buildings/${buildingId}/incidents`, { params: { limit: 200 } })
+          .catch(() => ({ data: { items: [] } })),
     ]).then(([bRes, nRes, eRes, wRes, iRes]) => {
       setBuilding(bRes.data);
 
       // Normalize nodes: backend uses node_key, design uses id
-      const rawNodes = nRes.data || [];
+      const rawNodes = nRes.data?.items ?? nRes.data ?? [];
       const normalized = rawNodes.map(n => ({
         id: n.node_key || n.id,
         type: n.type,
@@ -93,7 +94,7 @@ export default function SimulationPage() {
       setEdges(normEdges);
 
       if (wRes.data) setWeather(wRes.data);
-      setIncidents(iRes.data || []);
+      setIncidents(iRes.data?.items ?? iRes.data ?? []);
 
       // Set defaults
       const rooms = normalized.filter(n => n.type === 'room');
