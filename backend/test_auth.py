@@ -76,10 +76,12 @@ def test_create_building_requires_auth(client):
 
 
 def test_read_endpoints_remain_public(client):
-    # No auth, list of buildings is empty but still 200.
+    # No auth, list of buildings is empty but still 200 — envelope shape.
     r = client.get("/buildings")
     assert r.status_code == 200
-    assert r.json() == []
+    body = r.json()
+    assert body["items"] == []
+    assert body["total"] == 0
     # /health public
     assert client.get("/health").status_code == 200
 

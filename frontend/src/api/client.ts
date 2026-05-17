@@ -73,9 +73,17 @@ export function getLastProcessTimeMs(): number | null {
 // Endpoint wrappers
 // ---------------------------------------------------------------------------
 
+// Paginated list endpoints return `{items, total, limit, offset}`.
+interface Page<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export async function listBuildings(): Promise<Building[]> {
-  const { data } = await http.get<Building[]>('/buildings');
-  return data;
+  const { data } = await http.get<Page<Building>>('/buildings', { params: { limit: 500 } });
+  return data.items;
 }
 
 export async function getBuilding(id: number | string): Promise<Building> {
@@ -84,8 +92,11 @@ export async function getBuilding(id: number | string): Promise<Building> {
 }
 
 export async function listNodes(id: number | string): Promise<BuildingNode[]> {
-  const { data } = await http.get<BuildingNode[]>(`/buildings/${id}/nodes`);
-  return data;
+  const { data } = await http.get<Page<BuildingNode>>(
+    `/buildings/${id}/nodes`,
+    { params: { limit: 500 } },
+  );
+  return data.items;
 }
 
 export async function getGraph(id: number | string): Promise<any> {
@@ -132,6 +143,7 @@ export function runFireSpread(
 export interface AuthUser {
   id: number;
   email: string;
+  role: 'admin' | 'operator' | 'viewer';
   created_at: string;
 }
 

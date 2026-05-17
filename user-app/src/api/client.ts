@@ -24,9 +24,18 @@ export const http = axios.create({
   timeout: 30_000,
 });
 
+// Backend list endpoints return a `Page<T>` envelope `{items, total, limit, offset}`.
+// /floors and /edges still return arrays — they aren't paginated yet.
+interface Page<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export async function listBuildings(): Promise<Building[]> {
-  const { data } = await http.get<Building[]>('/buildings');
-  return data;
+  const { data } = await http.get<Page<Building>>('/buildings', { params: { limit: 500 } });
+  return data.items;
 }
 
 export async function getBuilding(id: number | string): Promise<Building> {
@@ -40,8 +49,11 @@ export async function listFloors(id: number | string): Promise<Floor[]> {
 }
 
 export async function listNodes(id: number | string): Promise<BuildingNode[]> {
-  const { data } = await http.get<BuildingNode[]>(`/buildings/${id}/nodes`);
-  return data;
+  const { data } = await http.get<Page<BuildingNode>>(
+    `/buildings/${id}/nodes`,
+    { params: { limit: 500 } },
+  );
+  return data.items;
 }
 
 export async function listEdges(id: number | string): Promise<BuildingEdge[]> {
@@ -50,10 +62,10 @@ export async function listEdges(id: number | string): Promise<BuildingEdge[]> {
 }
 
 export async function listIncidents(id: number | string, activeOnly = true): Promise<Incident[]> {
-  const { data } = await http.get<Incident[]>(`/buildings/${id}/incidents`, {
-    params: { active_only: activeOnly },
+  const { data } = await http.get<Page<Incident>>(`/buildings/${id}/incidents`, {
+    params: { active_only: activeOnly, limit: 200 },
   });
-  return data;
+  return data.items;
 }
 
 export async function reportIncident(id: number | string, body: IncidentCreate): Promise<Incident> {

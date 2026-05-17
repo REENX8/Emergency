@@ -107,3 +107,31 @@ def get_current_user(
     if not user:
         raise HTTPException(401, "User no longer exists")
     return user
+
+
+# Role hierarchy — higher index implies all permissions of lower indices.
+_ROLE_RANK = {"viewer": 0, "operator": 1, "admin": 2}
+
+
+def role_at_least(user_role: str, required: str) -> bool:
+    return _ROLE_RANK.get(user_role, -1) >= _ROLE_RANK.get(required, 99)
+
+
+def require_role(min_role: str):
+    """FastAPI dependency factory — 401 if no token, 403 if role < min_role.
+
+    Usage:
+        @router.post("/x", dependencies=[Depends(require_role("operator"))])
+    """
+    if min_role not in _ROLE_RANK:
+        raise ValueError(f"Unknown role: {min_role}")
+
+    def _dep(user: User = Depends(get_current_user)) -> User:
+        if not role_at_least(user.role, min_role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires role '{min_role}' or higher (have '{user.role}')",
+            )
+        return user
+
+    return _dep

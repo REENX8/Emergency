@@ -85,11 +85,11 @@ export default function FloorEditor() {
     try {
       const [bRes, nRes, eRes] = await Promise.all([
         http.get(`/buildings/${buildingId}`),
-        http.get(`/buildings/${buildingId}/nodes`),
+        http.get(`/buildings/${buildingId}/nodes`, { params: { limit: 500 } }),
         http.get(`/buildings/${buildingId}/edges`),
       ]);
       setBuilding(bRes.data);
-      const rawNodes = nRes.data || [];
+      const rawNodes = nRes.data?.items ?? nRes.data ?? [];
       const normalized = rawNodes.map(n => ({
         id: n.node_key || n.id,
         type: n.type,

@@ -47,12 +47,18 @@ def get_db():
 
 
 def init_db():
-    from models import Building, Floor, Node, Edge, Incident, User  # noqa: F401
+    # Production deploys should run `alembic upgrade head` instead — this
+    # create_all + ALTER fallbacks exist so tests + first-time dev runs work
+    # without an Alembic env.
+    from models import Building, Floor, Node, Edge, Incident, User, AuditLog  # noqa: F401
     Base.metadata.create_all(bind=engine)
-    # Migrate: add tmd_station_id to existing databases that pre-date this column
     with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE buildings ADD COLUMN tmd_station_id VARCHAR DEFAULT '515201'"))
-            conn.commit()
-        except Exception:
-            pass  # column already exists
+        for stmt in (
+            "ALTER TABLE buildings ADD COLUMN tmd_station_id VARCHAR DEFAULT '515201'",
+            "ALTER TABLE users ADD COLUMN role VARCHAR NOT NULL DEFAULT 'operator'",
+        ):
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # column already exists
