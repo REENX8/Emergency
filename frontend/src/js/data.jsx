@@ -1,6 +1,7 @@
 /* Building data — three floors, faithful to backend node_key scheme */
+/* eslint-disable */
 
-const BUILDING = {
+export const BUILDING = {
   id: 1,
   name: 'อาคาร A — คณะวิทยาศาสตร์',
   address: 'มหาวิทยาลัยเชียงใหม่ · เชียงใหม่',
@@ -9,9 +10,9 @@ const BUILDING = {
 };
 
 /* Coordinates in a 1080×740 viewBox, 3 stacked floor bands. */
-const F3 = 110, F2 = 360, F1 = 610;
+export const F3 = 110, F2 = 360, F1 = 610;
 
-const NODES = [
+export const NODES = [
   /* Floor 3 */
   { id: 'r301', type: 'room',     label: 'ห้อง 301', x: 220, y: F3,    floor: 3, cap: 10 },
   { id: 'r302', type: 'room',     label: 'ห้อง 302', x: 480, y: F3,    floor: 3, cap: 10 },
@@ -41,7 +42,7 @@ const NODES = [
 const E = (u, v, distance_m, width_m = 2, is_stair = false) =>
   ({ u, v, distance_m, width_m, is_stair });
 
-const EDGES = [
+export const EDGES = [
   /* Floor 3 horizontal */
   E('r301', 'c3', 14), E('r302', 'c3', 8), E('r303', 'c3', 14),
   E('stair_a_f3', 'c3', 18), E('stair_b_f3', 'c3', 18),
@@ -62,14 +63,14 @@ const EDGES = [
 ];
 
 /* Multi-building roster for the Manager view */
-const BUILDINGS = [
+export const BUILDINGS = [
   { id: 1, name: 'อาคาร A — คณะวิทยาศาสตร์',  address: 'มหาวิทยาลัยเชียงใหม่',  description: '3 ชั้น · 9 ห้อง',  nodes: 20, edges: 19, score: 78, grade: 'B', station: '503201 · เชียงใหม่',  created: '2025-09-12' },
   { id: 2, name: 'อาคาร B — หอพักนักศึกษา',     address: 'ถ.สุเทพ ต.สุเทพ',         description: '5 ชั้น · 30 ห้อง', nodes: 64, edges: 71, score: 64, grade: 'C', station: '503201 · เชียงใหม่',  created: '2025-09-28' },
   { id: 3, name: 'อาคาร C — ห้องสมุดกลาง',     address: 'มหาวิทยาลัยเชียงใหม่',   description: '4 ชั้น · 200 คน', nodes: 48, edges: 53, score: 82, grade: 'A', station: '503201 · เชียงใหม่',  created: '2025-10-02' },
   { id: 4, name: 'อาคาร D — คลังเอกสาร',       address: 'ถ.ห้วยแก้ว',              description: '2 ชั้น · เสี่ยงสูง', nodes: 14, edges: 13, score: 38, grade: 'D', station: '515201 · บางนา',     created: '2025-10-19' },
 ];
 
-const WEATHER = {
+export const WEATHER = {
   wind_speed_ms: 3.5,
   wind_direction_deg: 135,
   temperature_c: 28.4,
@@ -79,11 +80,9 @@ const WEATHER = {
   description: 'มีเมฆบางส่วน',
 };
 
-const INCIDENTS_LOG = [
+export const INCIDENTS_LOG = [
   { t: '14:02:11', type: 'fire',  node: 'r201', sev: 'critical', by: 'พ.ต.ท.วิรัช',     status: 'active'   },
   { t: '14:03:47', type: 'smoke', node: 'c2',   sev: 'high',     by: 'auto · ระบบลาม',  status: 'active'   },
   { t: '14:05:09', type: 'crowd', node: 'c1',   sev: 'medium',   by: 'พ.ต.อ.ประสิทธิ์', status: 'tracking' },
   { t: '13:58:30', type: 'smoke', node: 'r202', sev: 'low',      by: 'sensor · MQ-2',   status: 'cleared'  },
 ];
-
-Object.assign(window, { BUILDING, NODES, EDGES, BUILDINGS, WEATHER, INCIDENTS_LOG });
