@@ -21,6 +21,7 @@ from analysis import (
 from compliance import BuildingMeta, evaluate as evaluate_compliance
 from database import get_db
 from dynamic_graph import build_graph_from_db, get_exits_from_db
+from experiments import SweepRequest, run_sweep
 from models import Building
 
 router = APIRouter(prefix="/buildings", tags=["analysis"])
@@ -166,3 +167,50 @@ def run_building_experiments(
         )
 
     return data
+
+
+# ---------------------------------------------------------------------------
+# Sensitivity sweep (Phase 4)
+# ---------------------------------------------------------------------------
+
+@router.post("/{building_id}/experiments/sweep")
+def run_sweep_endpoint(
+    building_id: int,
+    req: SweepRequest,
+    format: str = Query(default="json", description="json | csv"),
+    db: Session = Depends(get_db),
+):
+    """Run an evacuation sweep over one parameter (wind_speed, fire_severity,
+    crowd_density, or fire_location). Reproducible given the same `seed`.
+
+    Synchronous — fine for small sweeps (≤ 100 values × ≤ 4 algorithms ×
+    ≤ 50 repeats). For larger sweeps move to a background queue.
+    """
+    _get_building_or_404(building_id, db)
+    G     = build_graph_from_db(building_id, db)
+    exits = get_exits_from_db(building_id, db)
+
+    if not exits:
+        raise HTTPException(400, detail="No exits defined in this building")
+    if req.fire_location not in G:
+        raise HTTPException(400, detail=f"fire_location '{req.fire_location}' not in graph")
+    if req.variable == "fire_location" and req.fire_locations:
+        for fl in req.fire_locations:
+            if fl not in G:
+                raise HTTPException(400, detail=f"fire_locations entry '{fl}' not in graph")
+
+    try:
+        result = run_sweep(G, exits, req)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc))
+
+    if format == "csv":
+        return Response(
+            content=result.csv,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition":
+                    f'attachment; filename="sweep_b{building_id}_{req.variable}.csv"'
+            },
+        )
+    return result.to_dict()
