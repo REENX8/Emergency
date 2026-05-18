@@ -1,4 +1,4 @@
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
@@ -6,6 +6,7 @@ import { getBuilding, listEdges, listFloors, listIncidents, listNodes } from '..
 import FloorPlanCanvas from '../components/FloorPlanCanvas';
 import ReportSheet from '../components/ReportSheet';
 import RouteSheet from '../components/RouteSheet';
+import { useBuildingEvents } from '../hooks/useBuildingEvents';
 import { useUserRoute } from '../hooks/useUserRoute';
 
 export default function FloorMap() {
@@ -44,6 +45,17 @@ export default function FloorMap() {
   });
 
   const routeQ = useUserRoute(id, userNodeKey);
+  const qc = useQueryClient();
+
+  // Live updates: an incident anywhere in the building should immediately
+  // refresh both the incident list and the user's route. Polling at 7s
+  // remains as a backstop in case the WebSocket can't connect.
+  useBuildingEvents(id, (ev) => {
+    if (ev.type === 'incident.created' || ev.type === 'incident.resolved') {
+      qc.invalidateQueries({ queryKey: ['incidents', id] });
+      qc.invalidateQueries({ queryKey: ['route', String(id)] });
+    }
+  });
 
   const floor = floorsQ.data?.find((f) => f.floor_number === floorNum);
   const allNodes = nodesQ.data ?? [];

@@ -22,6 +22,7 @@ from dynamic_graph import (
 from models import Building, Edge, Floor, Node, User
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from rate_limit import limiter, user_or_ip
+from realtime import broadcast_sync
 from schemas import (
     BuildingCreate, BuildingResponse, BuildingUpdate,
     BuildingImportPayload, BuildingImportResponse,
@@ -278,6 +279,8 @@ def create_node(
     invalidate_graph_cache(building_id)
     audit(db, actor, "node.create", target_type="node", target_id=node.id,
           payload={"building_id": building_id, "node_key": node.node_key})
+    broadcast_sync(building_id, "node.created",
+                   {"node_key": node.node_key, "type": node.type}, actor=actor)
     return node
 
 
@@ -320,6 +323,8 @@ def update_node(
     invalidate_graph_cache(building_id)
     audit(db, actor, "node.update", target_type="node", target_id=node.id,
           payload={"building_id": building_id, "node_key": node_key, "changed": list(updates.keys())})
+    broadcast_sync(building_id, "node.updated",
+                   {"node_key": node_key, "changed": list(updates.keys())}, actor=actor)
     return node
 
 
@@ -348,6 +353,8 @@ def delete_node(
     invalidate_graph_cache(building_id)
     audit(db, actor, "node.delete", target_type="node", target_id=node_id,
           payload={"building_id": building_id, "node_key": node_key})
+    broadcast_sync(building_id, "node.deleted",
+                   {"node_key": node_key}, actor=actor)
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +392,8 @@ def create_edge(
     invalidate_graph_cache(building_id)
     audit(db, actor, "edge.create", target_type="edge", target_id=edge.id,
           payload={"building_id": building_id, "u": payload.u_key, "v": payload.v_key})
+    broadcast_sync(building_id, "edge.created",
+                   {"id": edge.id, "u": payload.u_key, "v": payload.v_key}, actor=actor)
     return edge
 
 
@@ -410,6 +419,8 @@ def delete_edge(
     invalidate_graph_cache(building_id)
     audit(db, actor, "edge.delete", target_type="edge", target_id=edge_id,
           payload={"building_id": building_id})
+    broadcast_sync(building_id, "edge.deleted",
+                   {"id": edge_id}, actor=actor)
 
 
 # ---------------------------------------------------------------------------
