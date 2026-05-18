@@ -32,14 +32,27 @@ NODE_KEY   = Field(min_length=1, max_length=64)
 # ---------------------------------------------------------------------------
 
 class BuildingCreate(BaseModel):
-    name:           str = Field(..., min_length=1, max_length=200)
-    address:        str = Field(default="", max_length=500)
-    description:    str = Field(default="", max_length=1000)
-    tmd_station_id: str = Field(
+    name:           str  = Field(..., min_length=1, max_length=200)
+    address:        str  = Field(default="", max_length=500)
+    description:    str  = Field(default="", max_length=1000)
+    tmd_station_id: str  = Field(
         default="515201",
         max_length=20,
         description="TMD weather station ID for wind data (default: Bangna, Bangkok)",
     )
+    has_sprinkler:  bool = False
+    building_type:  str  = Field(default="office", max_length=20)
+    total_floors:   int  = Field(default=1, ge=1, le=200)
+
+
+class BuildingUpdate(BaseModel):
+    name:           Optional[str]  = Field(default=None, min_length=1, max_length=200)
+    address:        Optional[str]  = Field(default=None, max_length=500)
+    description:    Optional[str]  = Field(default=None, max_length=1000)
+    tmd_station_id: Optional[str]  = Field(default=None, max_length=20)
+    has_sprinkler:  Optional[bool] = None
+    building_type:  Optional[str]  = Field(default=None, max_length=20)
+    total_floors:   Optional[int]  = Field(default=None, ge=1, le=200)
 
 
 class BuildingResponse(BaseModel):
@@ -48,6 +61,9 @@ class BuildingResponse(BaseModel):
     address:        str
     description:    str
     tmd_station_id: str
+    has_sprinkler:  bool
+    building_type:  str
+    total_floors:   int
     created_at:     datetime
 
     model_config = {"from_attributes": True}
@@ -74,13 +90,14 @@ class FloorResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class NodeCreate(BaseModel):
-    node_key:     str  = Field(..., min_length=1, max_length=64, description="Unique ID within this building, e.g. 'r101'")
-    type:         str  = Field(default="room", max_length=20, description="room / corridor / stair / exit")
-    label:        str  = Field(default="", max_length=200)
+    node_key:     str   = Field(..., min_length=1, max_length=64, description="Unique ID within this building, e.g. 'r101'")
+    type:         str   = Field(default="room", max_length=20, description="room / corridor / stair / exit")
+    label:        str   = Field(default="", max_length=200)
     x:            float = 0.0
     y:            float = 0.0
     capacity:     int   = Field(default=20, ge=0, le=100000)
     floor_number: int   = Field(default=1, ge=-50, le=200)
+    area_m2:      Optional[float] = Field(default=None, ge=0, le=100000)
 
 
 class NodeUpdate(BaseModel):
@@ -89,6 +106,7 @@ class NodeUpdate(BaseModel):
     y:        Optional[float] = None
     capacity: Optional[int]   = Field(default=None, ge=0, le=100000)
     type:     Optional[str]   = Field(default=None, max_length=20)
+    area_m2:  Optional[float] = Field(default=None, ge=0, le=100000)
 
 
 class NodeResponse(BaseModel):
@@ -101,6 +119,7 @@ class NodeResponse(BaseModel):
     y:            float
     capacity:     int
     floor_number: int
+    area_m2:      Optional[float] = None
 
     model_config = {"from_attributes": True}
 

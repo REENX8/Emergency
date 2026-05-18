@@ -18,6 +18,7 @@ from analysis import (
     find_bottlenecks,
     run_experiments,
 )
+from compliance import BuildingMeta, evaluate as evaluate_compliance
 from database import get_db
 from dynamic_graph import build_graph_from_db, get_exits_from_db
 from models import Building
@@ -103,6 +104,31 @@ def maxflow_distribution(
 
     valid_rooms = [r for r in req.occupied_rooms if r in G]
     return compute_maxflow_distribution(G, valid_rooms, exits)
+
+
+# ---------------------------------------------------------------------------
+# Thai building code compliance
+# ---------------------------------------------------------------------------
+
+@router.get("/{building_id}/compliance")
+def building_compliance(
+    building_id: int,
+    db: Session = Depends(get_db),
+):
+    """Evaluate the building against Thai building code (กฎกระทรวง พ.ศ. 2535).
+
+    See backend/compliance.py for the full rule list + thresholds. Building
+    metadata (`has_sprinkler`, `building_type`, `total_floors`) controls
+    which threshold applies — update via PATCH /buildings/{id}.
+    """
+    b = _get_building_or_404(building_id, db)
+    G = build_graph_from_db(building_id, db)
+    meta = BuildingMeta(
+        has_sprinkler = bool(b.has_sprinkler),
+        building_type = b.building_type or "office",
+        total_floors  = int(b.total_floors or 1),
+    )
+    return evaluate_compliance(G, meta)
 
 
 # ---------------------------------------------------------------------------

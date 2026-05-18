@@ -17,6 +17,9 @@ class Building(Base):
     address        = Column(String, default="")
     description    = Column(String, default="")
     tmd_station_id = Column(String, default="515201")   # TMD weather station for wind data
+    has_sprinkler  = Column(Boolean, default=False)     # affects max travel distance (60m vs 30m)
+    building_type  = Column(String, default="office")   # office / residential / assembly / mixed
+    total_floors   = Column(Integer, default=1)
     created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floors    = relationship("Floor",    back_populates="building", cascade="all, delete-orphan")
@@ -51,6 +54,7 @@ class Node(Base):
     y            = Column(Float, default=0.0)
     capacity     = Column(Integer, default=20)
     floor_number = Column(Integer, default=1)
+    area_m2      = Column(Float, nullable=True)      # optional floor area for occupancy check
 
     building = relationship("Building", back_populates="nodes")
 

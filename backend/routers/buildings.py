@@ -23,7 +23,7 @@ from models import Building, Edge, Floor, Node, User
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from rate_limit import limiter, user_or_ip
 from schemas import (
-    BuildingCreate, BuildingResponse,
+    BuildingCreate, BuildingResponse, BuildingUpdate,
     BuildingImportPayload, BuildingImportResponse,
     EdgeCreate, EdgeResponse,
     FloorResponse,
@@ -125,6 +125,26 @@ def get_building(building_id: int, db: Session = Depends(get_db)):
     b = db.get(Building, building_id)
     if not b:
         raise HTTPException(404, detail="Building not found")
+    return b
+
+
+@router.patch("/{building_id}", response_model=BuildingResponse)
+def update_building(
+    building_id: int,
+    payload: BuildingUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
+    b = db.get(Building, building_id)
+    if not b:
+        raise HTTPException(404, detail="Building not found")
+    updates = payload.model_dump(exclude_none=True)
+    for k, v in updates.items():
+        setattr(b, k, v)
+    db.commit()
+    db.refresh(b)
+    audit(db, actor, "building.update", target_type="building", target_id=building_id,
+          payload={"changed": list(updates.keys())})
     return b
 
 
