@@ -39,11 +39,12 @@ DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 from fire_spread import compute_fire_spread, fire_spread_to_cytoscape
 from smoke_propagation import (
+    BLOCK_THR,
     compute_smoke_levels,
     apply_smoke_levels,
     smoke_levels_to_cytoscape,
 )
-from weather import compute_smoke_spread, fetch_weather
+from weather import fetch_weather
 
 router = APIRouter(prefix="/buildings", tags=["buildings"])
 
@@ -70,6 +71,7 @@ def create_building(
 @router.get("", response_model=Page[BuildingResponse])
 def list_buildings(
     db: Session = Depends(get_db),
+    actor: User = Depends(require_role("viewer")),
     limit:  int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
 ):
@@ -344,6 +346,9 @@ def create_edge(
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
 
+    if payload.u_key == payload.v_key:
+        raise HTTPException(400, detail="Self-loops are not allowed (u_key and v_key must differ)")
+
     # Validate both nodes exist
     for key in (payload.u_key, payload.v_key):
         if not db.query(Node).filter(Node.building_id == building_id, Node.node_key == key).first():
@@ -480,21 +485,18 @@ async def evacuate_building(
             "source":             "manual",
         }
 
-    # Smoke spread
-    all_nodes_data = dict(G.nodes(data=True))
-    smoke_edges = compute_smoke_spread(
+    # Smoke spread — continuous model, consistent with /evacuate/compare and /smoke/propagate
+    smoke_levels = compute_smoke_levels(
         fire_node=req.fire_location,
-        graph_nodes=all_nodes_data,
-        graph_edges=list(G.edges()),
+        G=G,
         wind_direction_deg=weather["wind_direction_deg"],
         wind_speed_ms=weather["wind_speed_ms"],
-        smoke_radius_m=20.0,
     )
 
     # Apply conditions to a working copy
     G_sim = copy.deepcopy(G)
-    from graph_builder import apply_smoke, remove_node_safe
-    apply_smoke(G_sim, smoke_edges)
+    from graph_builder import remove_node_safe
+    apply_smoke_levels(G_sim, smoke_levels)
 
     removed_exits = []
     for exit_node in req.blocked_exits:
@@ -523,7 +525,7 @@ async def evacuate_building(
         "fire_location":       req.fire_location,
         "primary_routes":      primary_routes,
         "comparison":          comparison,
-        "smoke_blocked_edges": [[u, v] for u, v in smoke_edges],
+        "smoke_blocked_edges": [[u, v] for (u, v), s in smoke_levels.items() if s >= BLOCK_THR],
         "removed_exits":       removed_exits,
         "weather":             weather,
         "evacuation_estimate": evac_estimate,

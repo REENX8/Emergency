@@ -36,7 +36,18 @@ def _compute_version_key(building_id: int, db: Session) -> tuple:
         .filter(Incident.building_id == building_id)
         .scalar()
     ) or 0
-    return (node_count, edge_count, latest_incident)
+    # Track active fire incidents separately: toggling is_active doesn't change
+    # the max(id), so the cache would otherwise serve a stale graph.
+    active_fire_count = (
+        db.query(func.count(Incident.id))
+        .filter(
+            Incident.building_id == building_id,
+            Incident.is_active == True,  # noqa: E712
+            Incident.incident_type == "fire",
+        )
+        .scalar()
+    ) or 0
+    return (node_count, edge_count, latest_incident, active_fire_count)
 
 
 def invalidate_graph_cache(building_id: int | None = None) -> None:

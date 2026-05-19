@@ -121,6 +121,20 @@ def test_viewer_cannot_create_building(client):
     assert r.status_code == 403
 
 
+def test_viewer_can_list_buildings(client):
+    _register(client, "admin@x.co")
+    admin_h = _login(client, "admin@x.co")
+    viewer = _register(client, "viewer@x.co")
+    client.patch(f"/auth/users/{viewer['id']}/role",
+                 json={"role": "viewer"}, headers=admin_h)
+    client.post("/buildings", json={"name": "B1"}, headers=admin_h)
+
+    viewer_h = _login(client, "viewer@x.co")
+    r = client.get("/buildings", headers=viewer_h)
+    assert r.status_code == 200
+    assert r.json()["total"] == 1
+
+
 def test_non_admin_cannot_list_users(client):
     _register(client, "admin@x.co")
     _register(client, "op@x.co")
