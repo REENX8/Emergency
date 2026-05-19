@@ -59,7 +59,12 @@ http.interceptors.response.use(
   },
   (error) => {
     if (error?.response?.status === 401) {
+      const hadToken = !!getToken();
       setToken(null);
+      if (hadToken) {
+        // Notify the user their session expired rather than silently redirecting.
+        window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      }
     }
     return Promise.reject(error);
   },

@@ -75,15 +75,24 @@ def test_create_building_requires_auth(client):
     assert r.status_code == 401
 
 
-def test_read_endpoints_remain_public(client):
-    # No auth, list of buildings is empty but still 200 — envelope shape.
+def test_list_buildings_requires_auth(client):
+    # Building list now requires at least viewer auth.
     r = client.get("/buildings")
+    assert r.status_code == 401
+
+
+def test_health_is_public(client):
+    assert client.get("/health").status_code == 200
+
+
+def test_list_buildings_with_auth(client):
+    client.post("/auth/register", json={"email": "ad@ad.co", "password": "abcdefgh"})
+    tok = client.post("/auth/login", json={"email": "ad@ad.co", "password": "abcdefgh"}).json()["access_token"]
+    r = client.get("/buildings", headers={"Authorization": f"Bearer {tok}"})
     assert r.status_code == 200
     body = r.json()
     assert body["items"] == []
     assert body["total"] == 0
-    # /health public
-    assert client.get("/health").status_code == 200
 
 
 def test_create_building_works_with_token(client):

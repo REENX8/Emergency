@@ -32,6 +32,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24
 def _resolve_secret() -> str:
     secret = os.getenv("JWT_SECRET")
     if not secret:
+        if os.getenv("ENV", "development").lower() == "production":
+            raise RuntimeError(
+                "JWT_SECRET environment variable is required in production. "
+                "Set it to a random 32+ character string."
+            )
         logger.warning(
             "JWT_SECRET not set — using a dev-only fallback. "
             "Set JWT_SECRET to a random 32+ char string in production."

@@ -41,6 +41,9 @@ export default function SimulationPage() {
   const [fireTime,  setFireTime]  = useState(0);
   const [playing,   setPlaying]   = useState(false);
 
+  /* ── Error state ─────────────────────────────────────────────── */
+  const [loadError,    setLoadError]    = useState(null);
+
   /* ── UI state ────────────────────────────────────────────────── */
   const [tab,          setTab]          = useState('results');
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -110,6 +113,11 @@ export default function SimulationPage() {
       }
     }).catch(err => {
       console.error('Failed to load building data:', err);
+      setLoadError(
+        err?.response?.data?.detail
+        || err?.message
+        || 'Failed to load building data. Please refresh the page.'
+      );
     }).finally(() => {
       setLoading(false);
     });
@@ -211,6 +219,20 @@ export default function SimulationPage() {
 
   return (
     <div className="sim-screen">
+      {loadError && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: '#c0392b', color: '#fff',
+          padding: '10px 16px', fontSize: '13px', fontFamily: 'monospace',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span>⚠ {loadError}</span>
+          <button
+            onClick={() => setLoadError(null)}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px' }}
+          >✕</button>
+        </div>
+      )}
       <SimTopBar
         building={building}
         algorithm={algorithm}

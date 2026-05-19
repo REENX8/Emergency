@@ -47,7 +47,7 @@ def admin_headers(client):
 def test_list_buildings_returns_envelope(client, admin_headers):
     for i in range(3):
         client.post("/buildings", json={"name": f"B{i}"}, headers=admin_headers)
-    r = client.get("/buildings")
+    r = client.get("/buildings", headers=admin_headers)
     body = r.json()
     assert body["total"] == 3
     assert len(body["items"]) == 3
@@ -58,7 +58,7 @@ def test_list_buildings_returns_envelope(client, admin_headers):
 def test_list_buildings_pagination(client, admin_headers):
     for i in range(5):
         client.post("/buildings", json={"name": f"B{i}"}, headers=admin_headers)
-    r = client.get("/buildings?limit=2&offset=1")
+    r = client.get("/buildings?limit=2&offset=1", headers=admin_headers)
     body = r.json()
     assert body["total"] == 5
     assert len(body["items"]) == 2
@@ -66,12 +66,17 @@ def test_list_buildings_pagination(client, admin_headers):
     assert body["offset"] == 1
 
 
-def test_list_buildings_rejects_bad_pagination(client):
-    r = client.get("/buildings?limit=0")
+def test_list_buildings_requires_auth(client):
+    r = client.get("/buildings")
+    assert r.status_code == 401
+
+
+def test_list_buildings_rejects_bad_pagination(client, admin_headers):
+    r = client.get("/buildings?limit=0", headers=admin_headers)
     assert r.status_code == 422
-    r = client.get("/buildings?limit=10000")
+    r = client.get("/buildings?limit=10000", headers=admin_headers)
     assert r.status_code == 422
-    r = client.get("/buildings?offset=-1")
+    r = client.get("/buildings?offset=-1", headers=admin_headers)
     assert r.status_code == 422
 
 
@@ -136,3 +141,15 @@ def test_node_capacity_bounds(client, admin_headers):
 def test_unauth_write_returns_401(client):
     r = client.post("/buildings", json={"name": "anon"})
     assert r.status_code == 401
+
+
+def test_edge_self_loop_rejected(client, admin_headers):
+    bid = client.post("/buildings", json={"name": "B"},
+                       headers=admin_headers).json()["id"]
+    client.post(f"/buildings/{bid}/nodes",
+                json={"node_key": "n1", "type": "room"}, headers=admin_headers)
+    r = client.post(f"/buildings/{bid}/edges",
+                    json={"u_key": "n1", "v_key": "n1", "distance_m": 5.0, "width_m": 2.0},
+                    headers=admin_headers)
+    assert r.status_code == 400
+    assert "self-loop" in r.json()["detail"].lower()
