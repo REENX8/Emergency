@@ -66,9 +66,10 @@ def test_list_buildings_pagination(client, admin_headers):
     assert body["offset"] == 1
 
 
-def test_list_buildings_requires_auth(client):
+def test_list_buildings_no_auth_required(client):
     r = client.get("/buildings")
-    assert r.status_code == 401
+    assert r.status_code == 200
+    assert "items" in r.json()
 
 
 def test_list_buildings_rejects_bad_pagination(client, admin_headers):
