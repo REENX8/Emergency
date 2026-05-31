@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Building Floor Plan — แปลนอาคาร</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      padding: 24px;
+      color: #1a1a2e;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 4px; color: #16213e; }
+    p.subtitle { color: #555; font-size: 0.9rem; margin-bottom: 20px; }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      margin-bottom: 20px;
+    }
+    .card h2 { font-size: 1rem; color: #333; margin-bottom: 14px; border-bottom: 2px solid #e0e7ff; padding-bottom: 8px; }
+    svg { display: block; width: 100%; max-width: 900px; margin: 0 auto; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: #444; }
+    .legend-box { width: 18px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { background: #e0e7ff; padding: 8px 10px; text-align: left; font-weight: 600; }
+    td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f8f9ff; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-exit1 { background: #dbeafe; color: #1d4ed8; }
+    .badge-exit2 { background: #dcfce7; color: #15803d; }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .stat { background: #f8f9ff; border-radius: 8px; padding: 12px 16px; }
+    .stat-val { font-size: 1.5rem; font-weight: 700; color: #4338ca; }
+    .stat-label { font-size: 0.78rem; color: #666; margin-top: 2px; }
+  </style>
+</head>
+<body>
+
+<h1>Building Floor Plan Visualization</h1>
+<p class="subtitle">แปลนอาคารทางเดินหลายชั้น — จากแบบร่างมือ (Hand-drawn plan)</p>
+
+<!-- SVG Floor Plan -->
+<div class="card">
+  <h2>Floor Plan (Top View — All 4 Floors)</h2>
+  <svg viewBox="0 0 920 340" xmlns="http://www.w3.org/2000/svg">
+    <!-- Background -->
+    <rect x="0" y="0" width="920" height="340" fill="#f8f9ff" rx="8"/>
+
+    <!-- Labels for floors -->
+    <text x="14" y="58"  fill="#666" font-size="10" font-family="Arial">F4</text>
+    <text x="14" y="118" fill="#666" font-size="10" font-family="Arial">F3</text>
+    <text x="14" y="178" fill="#666" font-size="10" font-family="Arial">F2</text>
+    <text x="14" y="238" fill="#666" font-size="10" font-family="Arial">F1</text>
+
+    <!-- Floor rows (y positions: 30, 90, 150, 210 for top of each corridor) -->
+    <!-- Each floor: corridor strip + room boxes -->
+
+    <!-- === FLOOR 4 === -->
+    <g id="floor4">
+      <!-- Corridor -->
+      <rect x="30" y="34" width="850" height="40" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" rx="2"/>
+      <!-- Rooms (7 rooms) -->
+      <rect x="30"  y="20" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="151" y="20" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="272" y="20" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="393" y="20" width="119" height="14" fill="#c7d2fe" stroke="#6366f1" stroke-width="1" rx="2"/>
+      <rect x="514" y="20" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="635" y="20" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="756" y="20" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <!-- Door markers -->
+      <rect x="84"  y="34" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="205" y="34" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="326" y="34" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="447" y="34" width="10" height="8" fill="#6366f1" rx="1"/>
+      <rect x="568" y="34" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="689" y="34" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="810" y="34" width="10" height="8" fill="#22c55e" rx="1"/>
+    </g>
+
+    <!-- === FLOOR 3 === -->
+    <g id="floor3">
+      <rect x="30" y="94" width="850" height="40" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" rx="2"/>
+      <rect x="30"  y="80" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="151" y="80" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="272" y="80" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="393" y="80" width="119" height="14" fill="#c7d2fe" stroke="#6366f1" stroke-width="1" rx="2"/>
+      <rect x="514" y="80" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="635" y="80" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="756" y="80" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="84"  y="94" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="205" y="94" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="326" y="94" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="447" y="94" width="10" height="8" fill="#6366f1" rx="1"/>
+      <rect x="568" y="94" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="689" y="94" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="810" y="94" width="10" height="8" fill="#22c55e" rx="1"/>
+    </g>
+
+    <!-- === FLOOR 2 === -->
+    <g id="floor2">
+      <rect x="30" y="154" width="850" height="40" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" rx="2"/>
+      <rect x="30"  y="140" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="151" y="140" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="272" y="140" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="393" y="140" width="119" height="14" fill="#c7d2fe" stroke="#6366f1" stroke-width="1" rx="2"/>
+      <rect x="514" y="140" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="635" y="140" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="756" y="140" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="84"  y="154" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="205" y="154" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="326" y="154" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="447" y="154" width="10" height="8" fill="#6366f1" rx="1"/>
+      <rect x="568" y="154" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="689" y="154" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="810" y="154" width="10" height="8" fill="#22c55e" rx="1"/>
+    </g>
+
+    <!-- === FLOOR 1 === -->
+    <g id="floor1">
+      <rect x="30" y="214" width="850" height="40" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5" rx="2"/>
+      <rect x="30"  y="200" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="151" y="200" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="272" y="200" width="119" height="14" fill="#bfdbfe" stroke="#3b82f6" stroke-width="1" rx="2"/>
+      <rect x="393" y="200" width="119" height="14" fill="#c7d2fe" stroke="#6366f1" stroke-width="1" rx="2"/>
+      <rect x="514" y="200" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="635" y="200" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="756" y="200" width="119" height="14" fill="#bbf7d0" stroke="#22c55e" stroke-width="1" rx="2"/>
+      <rect x="84"  y="214" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="205" y="214" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="326" y="214" width="10" height="8" fill="#3b82f6" rx="1"/>
+      <rect x="447" y="214" width="10" height="8" fill="#6366f1" rx="1"/>
+      <rect x="568" y="214" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="689" y="214" width="10" height="8" fill="#22c55e" rx="1"/>
+      <rect x="810" y="214" width="10" height="8" fill="#22c55e" rx="1"/>
+    </g>
+
+    <!-- EXIT 1 (left staircase) -->
+    <rect x="2" y="20" width="26" height="238" fill="#dc2626" rx="4" opacity="0.85"/>
+    <text x="15" y="115" fill="white" font-size="9" font-weight="bold" font-family="Arial" text-anchor="middle" writing-mode="tb">EXIT 1 บันได 1</text>
+
+    <!-- EXIT 2 (right staircase) -->
+    <rect x="882" y="20" width="26" height="238" fill="#15803d" rx="4" opacity="0.85"/>
+    <text x="895" y="115" fill="white" font-size="9" font-weight="bold" font-family="Arial" text-anchor="middle" writing-mode="tb">EXIT 2 บันได 2</text>
+
+    <!-- Dimension annotations -->
+    <!-- Total length arrow -->
+    <line x1="30" y1="270" x2="880" y2="270" stroke="#6366f1" stroke-width="1.5" marker-end="url(#arr)" marker-start="url(#arr)"/>
+    <text x="455" y="283" fill="#4338ca" font-size="10" font-family="Arial" text-anchor="middle" font-weight="bold">6,400 cm (64 m) — บันได 1 → บันได 2</text>
+
+    <!-- Room width annotation -->
+    <line x1="30" y1="300" x2="149" y2="300" stroke="#3b82f6" stroke-width="1" marker-end="url(#arr2)" marker-start="url(#arr2)"/>
+    <text x="89" y="314" fill="#1d4ed8" font-size="9" font-family="Arial" text-anchor="middle">914 cm / ห้อง</text>
+
+    <!-- Corridor width annotation -->
+    <text x="455" y="238" fill="#4338ca" font-size="8.5" font-family="Arial" text-anchor="middle">ทางเดิน 190 cm wide</text>
+
+    <!-- Staircase width annotations -->
+    <text x="15" y="268" fill="#dc2626" font-size="8" font-family="Arial" text-anchor="middle">160cm</text>
+    <text x="895" y="268" fill="#15803d" font-size="8" font-family="Arial" text-anchor="middle">160cm</text>
+
+    <!-- Room labels (Floor 1 only for clarity) -->
+    <text x="89"  y="210" fill="#1e40af" font-size="8" font-family="Arial" text-anchor="middle">R1</text>
+    <text x="210" y="210" fill="#1e40af" font-size="8" font-family="Arial" text-anchor="middle">R2</text>
+    <text x="331" y="210" fill="#1e40af" font-size="8" font-family="Arial" text-anchor="middle">R3</text>
+    <text x="452" y="210" fill="#4338ca" font-size="8" font-family="Arial" text-anchor="middle">R4</text>
+    <text x="573" y="210" fill="#15803d" font-size="8" font-family="Arial" text-anchor="middle">R5</text>
+    <text x="694" y="210" fill="#15803d" font-size="8" font-family="Arial" text-anchor="middle">R6</text>
+    <text x="815" y="210" fill="#15803d" font-size="8" font-family="Arial" text-anchor="middle">R7</text>
+
+    <!-- Arrow markers -->
+    <defs>
+      <marker id="arr" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+        <path d="M0,0 L8,4 L0,8 Z" fill="#6366f1"/>
+      </marker>
+      <marker id="arr2" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#3b82f6"/>
+      </marker>
+    </defs>
+  </svg>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-box" style="background:#dc2626"></div> Exit / Staircase (ทางออก/บันได)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#bfdbfe;border:1px solid #3b82f6"></div> Rooms → Exit 1 (ห้องใกล้บันได 1)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#c7d2fe;border:1px solid #6366f1"></div> Center room (ห้องกลาง — ไกลสุด)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#bbf7d0;border:1px solid #22c55e"></div> Rooms → Exit 2 (ห้องใกล้บันได 2)</div>
+    <div class="legend-item"><div class="legend-box" style="background:#e0e7ff;border:1px solid #6366f1"></div> Corridor / Aisle (ทางเดิน 190 cm)</div>
+  </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="card">
+  <h2>Key Measurements (ขนาดหลัก)</h2>
+  <div class="stats-grid">
+    <div class="stat"><div class="stat-val">914 cm</div><div class="stat-label">Room width (ระยะห้องละ)</div></div>
+    <div class="stat"><div class="stat-val">64 m</div><div class="stat-label">Total length (บันได 1 → บันได 2)</div></div>
+    <div class="stat"><div class="stat-val">190 cm</div><div class="stat-label">Corridor width (ทางเดิน)</div></div>
+    <div class="stat"><div class="stat-val">160 cm</div><div class="stat-label">Staircase width (ความกว้างบันได)</div></div>
+    <div class="stat"><div class="stat-val">320 cm</div><div class="stat-label">Exit opening width (ทางออก)</div></div>
+    <div class="stat"><div class="stat-val">9 steps</div><div class="stat-label">Steps per half-floor (ขั้นต่อครึ่งชั้น)</div></div>
+    <div class="stat"><div class="stat-val">4 floors</div><div class="stat-label">Total floors (ชั้น)</div></div>
+    <div class="stat"><div class="stat-val">2 exits</div><div class="stat-label">Exits only (ทางออกมีแค่ 2 ทาง)</div></div>
+  </div>
+</div>
+
+<!-- Room Data Table -->
+<div class="card">
+  <h2>Room-to-Exit Distance Table (ตารางระยะห้อง → ทางออก)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Room</th>
+        <th>X Center (cm)</th>
+        <th>Nearest Exit</th>
+        <th>Distance to Exit (cm)</th>
+        <th>Distance to Exit 1 (cm)</th>
+        <th>Distance to Exit 2 (cm)</th>
+        <th>Walk Time F1 (sec)</th>
+        <th>Walk Time F4 (sec)</th>
+      </tr>
+    </thead>
+    <tbody id="room-table"></tbody>
+  </table>
+</div>
+
+<script>
+const ROOM_WIDTH = 914;
+const TOTAL_LENGTH = 6400;
+const WALKING_SPEED = 120; // cm/s
+const STAIR_SPEED = 60;    // cm/s
+const STEPS_PER_HALF = 9;
+const STEP_HEIGHT = 18;    // cm
+
+const rooms = Array.from({length: 7}, (_, i) => {
+  const xCenter = Math.round(ROOM_WIDTH * i + ROOM_WIDTH / 2);
+  const d1 = xCenter;
+  const d2 = TOTAL_LENGTH - xCenter;
+  const nearest = d1 <= d2 ? 'exit_1' : 'exit_2';
+  const minDist = Math.min(d1, d2);
+
+  const walkTime = (dist, floor) => {
+    const corridorTime = dist / WALKING_SPEED;
+    const stairDist = STEPS_PER_HALF * 2 * (floor - 1) * STEP_HEIGHT;
+    const stairTime = stairDist / STAIR_SPEED;
+    return (corridorTime + stairTime).toFixed(1);
+  };
+
+  return { room: `R${i+1}`, xCenter, nearest, minDist, d1, d2, t1: walkTime(minDist, 1), t4: walkTime(minDist, 4) };
+});
+
+const tbody = document.getElementById('room-table');
+rooms.forEach(r => {
+  const tr = document.createElement('tr');
+  const badge = r.nearest === 'exit_1'
+    ? `<span class="badge badge-exit1">Exit 1 (บันได 1)</span>`
+    : `<span class="badge badge-exit2">Exit 2 (บันได 2)</span>`;
+  tr.innerHTML = `
+    <td>${r.room}</td>
+    <td>${r.xCenter}</td>
+    <td>${badge}</td>
+    <td>${r.minDist}</td>
+    <td>${r.d1}</td>
+    <td>${r.d2}</td>
+    <td>${r.t1} s</td>
+    <td>${r.t4} s</td>
+  `;
+  tbody.appendChild(tr);
+});
+</script>
+
+</body>
+</html>
