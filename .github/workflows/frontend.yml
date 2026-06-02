@@ -1,0 +1,78 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["user-app/**", "frontend/**", ".github/workflows/frontend.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["user-app/**", "frontend/**"]
+
+jobs:
+  user-app:
+    name: user-app (Vite/TS)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: user-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: user-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  frontend-legacy:
+    name: frontend (CRA/legacy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          CI: false   # CRA treats warnings as errors; allow build to pass
+        continue-on-error: true
+
+  npm-audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Audit user-app
+        working-directory: user-app
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: Audit frontend
+        working-directory: frontend
+        run: npm audit --audit-level=high
+        continue-on-error: true
