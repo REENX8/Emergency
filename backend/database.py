@@ -46,6 +46,16 @@ def get_db():
         db.close()
 
 
+def get_db_health() -> tuple[bool, str]:
+    """Return (ok, detail) by executing a trivial DB query."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
 def init_db():
     # Production deploys should run `alembic upgrade head` instead — this
     # create_all + ALTER fallbacks exist so tests + first-time dev runs work

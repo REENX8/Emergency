@@ -6,6 +6,14 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './styles.css';
 
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // SW registration failure is non-fatal
+    });
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: { retry: 1, refetchOnWindowFocus: true, staleTime: 30_000 },

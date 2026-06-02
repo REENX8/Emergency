@@ -15,9 +15,12 @@ Run with:
   uvicorn main:app --reload --port 8000
 """
 
+import json
 import logging
+import logging.config
 import os
 import time
+import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -27,12 +30,13 @@ load_dotenv()
 import httpx
 from fastapi import FastAPI, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import realtime
 
-from database import init_db
+from database import init_db, get_db_health
 import storage
 import weather as weather_mod
 from weather import fetch_weather
@@ -45,7 +49,36 @@ from routers import incidents as incidents_router
 from routers import analysis as analysis_router
 from routers import auth as auth_router
 
-logging.basicConfig(level=logging.INFO)
+
+# ---------------------------------------------------------------------------
+# Structured JSON logging
+# ---------------------------------------------------------------------------
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        log = {
+            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level":   record.levelname,
+            "logger":  record.name,
+            "msg":     record.getMessage(),
+        }
+        if record.exc_info:
+            log["exc"] = self.formatException(record.exc_info)
+        # Attach request_id if propagated via LogRecord extra
+        if hasattr(record, "request_id"):
+            log["request_id"] = record.request_id
+        return json.dumps(log, ensure_ascii=False)
+
+
+_use_json_logs = os.getenv("LOG_FORMAT", "json").lower() == "json"
+if _use_json_logs:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(_JsonFormatter())
+    logging.root.handlers = [_handler]
+    logging.root.setLevel(logging.INFO)
+else:
+    logging.basicConfig(level=logging.INFO)
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,16 +132,44 @@ class WebVitalsMetric(BaseModel):
 
 
 @app.middleware("http")
-async def _timing_middleware(request: Request, call_next):
-    """Attach X-Process-Time-Ms header and log slow requests (>500ms)."""
+async def _request_context_middleware(request: Request, call_next):
+    """Attach X-Request-ID and X-Process-Time-Ms; emit structured access log."""
+    request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request.state.request_id = request_id
+
     start = time.perf_counter()
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
+
+    response.headers["X-Request-ID"]      = request_id
     response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
+
+    log_extra = {"request_id": request_id}
+    log_msg = "%s %s %d %.1fms"
+    args = (request.method, request.url.path, response.status_code, elapsed_ms)
     if elapsed_ms > 500:
-        logger.warning(
-            "slow request %s %s took %.1fms",
-            request.method, request.url.path, elapsed_ms,
+        logger.warning(log_msg, *args, extra=log_extra)
+    else:
+        logger.info(log_msg, *args, extra=log_extra)
+    return response
+
+
+@app.middleware("http")
+async def _security_headers_middleware(request: Request, call_next):
+    """Add security headers to every response."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "geolocation=(), microphone=(), camera=()",
+    )
+    # HSTS only over HTTPS — skip for local dev
+    if request.url.scheme == "https":
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
         )
     return response
 
@@ -128,17 +189,15 @@ async def record_web_vitals(metric: WebVitalsMetric):
     return None
 
 
-# Allow the browser to read the timing header from cross-origin responses
-# (required because /metrics/web-vitals + everything else is on a different
-# host than the React app in production).
 @app.middleware("http")
-async def _expose_timing_header(request: Request, call_next):
+async def _expose_custom_headers(request: Request, call_next):
+    """Allow the browser to read custom response headers cross-origin."""
     response = await call_next(request)
     existing = response.headers.get("Access-Control-Expose-Headers", "")
-    headers = [h for h in existing.split(",") if h.strip()]
-    if "X-Process-Time-Ms" not in headers:
-        headers.append("X-Process-Time-Ms")
-    response.headers["Access-Control-Expose-Headers"] = ", ".join(headers)
+    want = {"X-Process-Time-Ms", "X-Request-ID"}
+    current = {h.strip() for h in existing.split(",") if h.strip()}
+    merged = sorted(current | want)
+    response.headers["Access-Control-Expose-Headers"] = ", ".join(merged)
     return response
 
 
@@ -155,7 +214,15 @@ app.include_router(analysis_router.router)
 
 @app.get("/health", tags=["meta"])
 def health():
-    return {"status": "ok", "service": "evacuation-simulation"}
+    """Liveness + readiness probe — checks DB connectivity."""
+    db_status, db_detail = get_db_health()
+    payload = {
+        "status":  "ok" if db_status else "degraded",
+        "service": "evacuation-simulation",
+        "db":      "ok" if db_status else f"error: {db_detail}",
+    }
+    status_code = 200 if db_status else 503
+    return JSONResponse(content=payload, status_code=status_code)
 
 
 @app.get("/weather", tags=["meta"])
