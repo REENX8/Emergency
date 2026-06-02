@@ -71,7 +71,6 @@ def create_building(
 @router.get("", response_model=Page[BuildingResponse])
 def list_buildings(
     db: Session = Depends(get_db),
-    actor: User = Depends(require_role("viewer")),
     limit:  int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
 ):

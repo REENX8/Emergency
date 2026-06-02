@@ -75,10 +75,10 @@ def test_create_building_requires_auth(client):
     assert r.status_code == 401
 
 
-def test_list_buildings_requires_auth(client):
-    # Building list now requires at least viewer auth.
+def test_list_buildings_is_public(client):
     r = client.get("/buildings")
-    assert r.status_code == 401
+    assert r.status_code == 200
+    assert "items" in r.json()
 
 
 def test_health_is_public(client):
