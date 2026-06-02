@@ -210,6 +210,60 @@ Migrations อยู่ที่ `backend/alembic/versions/`
 
 ---
 
+## Phase 2 — Thai Building Code Compliance
+
+Rules engine at `backend/compliance.py` ตรวจ 6 ข้อจากกฎกระทรวง พ.ศ. 2535 (ฉบับ 33/55):
+| ข้อ | กฎ | severity |
+|---|---|---|
+| `stair_width` | บันไดหนีไฟ ≥ 1.50 m | fail |
+| `corridor_width` | ทางเดินอพยพ ≥ 1.50 m | warn |
+| `exit_count` | อาคาร 2 ชั้นขึ้นไป ≥ 2 exit/ชั้น | fail |
+| `travel_distance` | ห้อง → exit ใกล้สุด ≤ 60 m (sprinkler) / 30 m | fail |
+| `dead_end` | ทางตัน ≤ 10 m | warn |
+| `occupancy` | capacity ≤ พื้นที่ ÷ (9 m²/คน office) | warn |
+
+Endpoint: `GET /buildings/{id}/compliance` คืน `{findings, summary, score, thresholds}`
+ใช้ metadata `has_sprinkler` / `building_type` / `total_floors` (PATCH /buildings/{id} เพื่อตั้งค่า)
+
+---
+
+## Phase 3 — Real-time Collaboration
+
+WebSocket endpoint: `WS /buildings/{id}/ws?token=<JWT?>`
+รับ event เมื่อมีการเปลี่ยนแปลงในอาคารนั้น
+
+Event types: `incident.created`, `incident.resolved`, `node.created/updated/deleted`, `edge.created/deleted`
+Shape: `{type, payload, actor: {id,email,role}|null, ts}`
+
+Frontend hook: `useBuildingEvents(buildingId, onEvent)` ใน `frontend/src/api/realtime.ts` และ `user-app/src/hooks/useBuildingEvents.ts` — auto-reconnect exponential backoff capped 30s
+
+Single-instance only. Multi-instance deploy ต้องการ Redis pub/sub (สร้างใน backend/realtime.py เอาภายหลัง)
+
+---
+
+## Phase 4 — Validation & Experiments
+
+### Sensitivity sweep
+`POST /buildings/{id}/experiments/sweep`
+```json
+{
+  "fire_location": "r201",
+  "variable": "wind_speed",      // wind_speed | fire_severity | crowd_density | fire_location
+  "values": [0, 1, 2, 5, 10],
+  "algorithms": ["dijkstra", "astar"],
+  "repeats": 5,
+  "seed": 42
+}
+```
+คืน `{request, trials, summary, csv}` — reproducible เมื่อ `seed` เท่ากัน
+ผ่าน `?format=csv` เพื่อโหลดเป็น CSV file
+
+### Golden validation cases
+`backend/validation/golden_*.json` — hand-computed expected times เปรียบเทียบใน `test_validation_golden.py` ภายใต้ tolerance 1 วินาที
+ป้องกัน regression เมื่อ refactor สูตรน้ำหนัก
+
+---
+
 ### ตัวอย่าง Request — สร้าง Building
 
 ```json
@@ -342,7 +396,7 @@ npm start
 cd backend
 pip install pytest
 RATE_LIMIT_ENABLED=0 pytest -v
-# 160 passed (พื้นฐาน 114 + auth + RBAC + API integration + pagination + rate limit)
+# 201 passed (พื้นฐาน 114 + auth/RBAC + compliance + realtime + experiments + validation)
 ```
 
 Rate-limit tests run their own fresh modules so set `RATE_LIMIT_ENABLED=0`

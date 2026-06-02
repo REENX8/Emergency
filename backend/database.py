@@ -56,6 +56,10 @@ def init_db():
         for stmt in (
             "ALTER TABLE buildings ADD COLUMN tmd_station_id VARCHAR DEFAULT '515201'",
             "ALTER TABLE users ADD COLUMN role VARCHAR NOT NULL DEFAULT 'operator'",
+            "ALTER TABLE buildings ADD COLUMN has_sprinkler BOOLEAN NOT NULL DEFAULT 0",
+            "ALTER TABLE buildings ADD COLUMN building_type VARCHAR NOT NULL DEFAULT 'office'",
+            "ALTER TABLE buildings ADD COLUMN total_floors INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE nodes ADD COLUMN area_m2 FLOAT",
         ):
             try:
                 conn.execute(text(stmt))

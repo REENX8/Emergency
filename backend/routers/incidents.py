@@ -11,6 +11,7 @@ from database import get_db
 from dynamic_graph import invalidate_graph_cache
 from models import Building, Incident, Node, User
 from rate_limit import limiter
+from realtime import broadcast_sync
 from schemas import IncidentCreate, IncidentResponse, Page
 
 router = APIRouter(prefix="/buildings", tags=["incidents"])
@@ -50,6 +51,10 @@ def report_incident(
     audit(db, None, "incident.create", target_type="incident", target_id=incident.id,
           payload={"building_id": building_id, "type": payload.incident_type,
                    "node_key": payload.node_key, "severity": payload.severity})
+    broadcast_sync(building_id, "incident.created", {
+        "id": incident.id, "node_key": incident.node_key,
+        "incident_type": incident.incident_type, "severity": incident.severity,
+    })
     return incident
 
 
@@ -93,4 +98,8 @@ def resolve_incident(
     audit(db, actor, "incident.resolve", target_type="incident", target_id=incident_id,
           payload={"building_id": building_id, "node_key": incident.node_key,
                    "type": incident.incident_type})
+    broadcast_sync(building_id, "incident.resolved", {
+        "id": incident.id, "node_key": incident.node_key,
+        "incident_type": incident.incident_type,
+    }, actor=actor)
     return incident

@@ -31,7 +31,7 @@ function BuildingMiniMap({ floors = 3 }) {
   );
 }
 
-function BuildingCard({ b, onEdit, onSimulate, onDelete }) {
+function BuildingCard({ b, onEdit, onSimulate, onCompliance, onExperiments, onDelete }) {
   const nodeCount = b.node_count || b.nodes || 0;
   const edgeCount = b.edge_count || b.edges || 0;
   const score = b.safety_score ?? b.score ?? '—';
@@ -54,15 +54,17 @@ function BuildingCard({ b, onEdit, onSimulate, onDelete }) {
         <div className="b-card-stats">
           <div><span className="mono small">{nodeCount}</span> <span className="mono micro dim">NODES</span></div>
           <div><span className="mono small">{edgeCount}</span> <span className="mono micro dim">EDGES</span></div>
-          <div><span className="mono small">{b.description?.match(/\d+ ชั้น/)?.[0] || '—'}</span></div>
+          <div><span className="mono small">{b.total_floors || '—'}</span> <span className="mono micro dim">FLOORS</span></div>
         </div>
         <div className="b-card-meta mono micro dim">
-          สร้าง: {b.created_at ? new Date(b.created_at).toLocaleDateString('th-TH') : '—'}
+          {b.has_sprinkler ? '💧 Sprinkler' : '— No sprinkler'} · {b.building_type || 'office'}
         </div>
       </div>
-      <div className="b-card-foot">
+      <div className="b-card-foot" style={{ flexWrap: 'wrap', gap: 6 }}>
         <button className="ghost-btn mono small" onClick={onEdit}>✎ EDIT</button>
         <button className="primary-btn small" onClick={onSimulate}>▶ SIMULATE</button>
+        <button className="ghost-btn mono small" onClick={onCompliance}>📋 CODE</button>
+        <button className="ghost-btn mono small" onClick={onExperiments}>🧪 EXP</button>
         <button className="icon-danger" title="ลบอาคาร" onClick={onDelete}>🗑</button>
       </div>
     </div>
@@ -232,6 +234,8 @@ export default function BuildingManager() {
               key={b.id} b={b}
               onEdit={() => navigate(`/buildings/${b.id}/edit`)}
               onSimulate={() => navigate(`/buildings/${b.id}/simulate`)}
+              onCompliance={() => navigate(`/buildings/${b.id}/compliance`)}
+              onExperiments={() => navigate(`/buildings/${b.id}/experiments`)}
               onDelete={() => remove(b.id)}
             />
           ))}

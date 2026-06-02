@@ -22,8 +22,9 @@ from dynamic_graph import (
 from models import Building, Edge, Floor, Node, User
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from rate_limit import limiter, user_or_ip
+from realtime import broadcast_sync
 from schemas import (
-    BuildingCreate, BuildingResponse,
+    BuildingCreate, BuildingResponse, BuildingUpdate,
     BuildingImportPayload, BuildingImportResponse,
     EdgeCreate, EdgeResponse,
     FloorResponse,
@@ -126,6 +127,26 @@ def get_building(building_id: int, db: Session = Depends(get_db)):
     b = db.get(Building, building_id)
     if not b:
         raise HTTPException(404, detail="Building not found")
+    return b
+
+
+@router.patch("/{building_id}", response_model=BuildingResponse)
+def update_building(
+    building_id: int,
+    payload: BuildingUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
+):
+    b = db.get(Building, building_id)
+    if not b:
+        raise HTTPException(404, detail="Building not found")
+    updates = payload.model_dump(exclude_none=True)
+    for k, v in updates.items():
+        setattr(b, k, v)
+    db.commit()
+    db.refresh(b)
+    audit(db, actor, "building.update", target_type="building", target_id=building_id,
+          payload={"changed": list(updates.keys())})
     return b
 
 
@@ -259,6 +280,8 @@ def create_node(
     invalidate_graph_cache(building_id)
     audit(db, actor, "node.create", target_type="node", target_id=node.id,
           payload={"building_id": building_id, "node_key": node.node_key})
+    broadcast_sync(building_id, "node.created",
+                   {"node_key": node.node_key, "type": node.type}, actor=actor)
     return node
 
 
@@ -301,6 +324,8 @@ def update_node(
     invalidate_graph_cache(building_id)
     audit(db, actor, "node.update", target_type="node", target_id=node.id,
           payload={"building_id": building_id, "node_key": node_key, "changed": list(updates.keys())})
+    broadcast_sync(building_id, "node.updated",
+                   {"node_key": node_key, "changed": list(updates.keys())}, actor=actor)
     return node
 
 
@@ -329,6 +354,8 @@ def delete_node(
     invalidate_graph_cache(building_id)
     audit(db, actor, "node.delete", target_type="node", target_id=node_id,
           payload={"building_id": building_id, "node_key": node_key})
+    broadcast_sync(building_id, "node.deleted",
+                   {"node_key": node_key}, actor=actor)
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +396,8 @@ def create_edge(
     invalidate_graph_cache(building_id)
     audit(db, actor, "edge.create", target_type="edge", target_id=edge.id,
           payload={"building_id": building_id, "u": payload.u_key, "v": payload.v_key})
+    broadcast_sync(building_id, "edge.created",
+                   {"id": edge.id, "u": payload.u_key, "v": payload.v_key}, actor=actor)
     return edge
 
 
@@ -394,6 +423,8 @@ def delete_edge(
     invalidate_graph_cache(building_id)
     audit(db, actor, "edge.delete", target_type="edge", target_id=edge_id,
           payload={"building_id": building_id})
+    broadcast_sync(building_id, "edge.deleted",
+                   {"id": edge_id}, actor=actor)
 
 
 # ---------------------------------------------------------------------------

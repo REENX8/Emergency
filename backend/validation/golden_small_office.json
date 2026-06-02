@@ -1,0 +1,26 @@
+{
+  "name": "Small office — single floor, three rooms, one exit",
+  "description": "Hand-computed reference: walking speed 1.4 m/s, no smoke, no crowd. Each room → exit through a single corridor.",
+  "nodes": [
+    {"node_key": "r1",    "type": "room",     "x": 0,   "y": 0,   "capacity": 10, "floor_number": 1},
+    {"node_key": "r2",    "type": "room",     "x": 0,   "y": 20,  "capacity": 10, "floor_number": 1},
+    {"node_key": "r3",    "type": "room",     "x": 0,   "y": 40,  "capacity": 10, "floor_number": 1},
+    {"node_key": "c1",    "type": "corridor", "x": 10,  "y": 20,  "capacity": 0,  "floor_number": 1},
+    {"node_key": "exit1", "type": "exit",     "x": 30,  "y": 20,  "capacity": 0,  "floor_number": 1}
+  ],
+  "edges": [
+    {"u_key": "r1", "v_key": "c1",    "distance_m": 14, "width_m": 2.0, "is_stair": false},
+    {"u_key": "r2", "v_key": "c1",    "distance_m": 10, "width_m": 2.0, "is_stair": false},
+    {"u_key": "r3", "v_key": "c1",    "distance_m": 14, "width_m": 2.0, "is_stair": false},
+    {"u_key": "c1", "v_key": "exit1", "distance_m": 20, "width_m": 2.0, "is_stair": false}
+  ],
+  "expected": {
+    "fire_location": "r1",
+    "_note": "All edges at v_base=1.4 m/s, no smoke, no crowd. r2 → c1 (10/1.4 ≈ 7.14) → exit1 (20/1.4 ≈ 14.29) ≈ 21.43s. r3 same as r2 swapped (14 + 20)/1.4 ≈ 24.29s.",
+    "evacuation_times_s": {
+      "r2": 21.43,
+      "r3": 24.29
+    },
+    "tolerance_s": 1.1
+  }
+}

@@ -148,6 +148,7 @@ def build_graph_from_db(
             "y":        n.y,
             "label":    n.label or n.node_key,
             "capacity": n.capacity,
+            "area_m2":  n.area_m2,
         }
         if n.node_key in fire_nodes:
             attrs["on_fire"] = True

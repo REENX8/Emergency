@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { http } from '../api/client';
+import { useBuildingEvents } from '../api/realtime';
 
 const TYPES = [
   { value: 'fire',  label: '🔥 ไฟไหม้',    color: '#ef4444' },
@@ -44,6 +45,14 @@ export default function IncidentPanel({ buildingId, nodes = [], preselectedNode 
   }, [buildingId]);
 
   useEffect(() => { loadIncidents(); }, [loadIncidents]);
+
+  // Live updates over WebSocket — refresh on any incident event.
+  useBuildingEvents(buildingId, (ev) => {
+    if (ev.type === 'incident.created' || ev.type === 'incident.resolved') {
+      loadIncidents();
+      onIncidentChange?.();
+    }
+  });
 
   const report = async () => {
     if (!nodeKey) { setError('กรุณาเลือก node'); return; }

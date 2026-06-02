@@ -25,10 +25,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+import realtime
 
 from database import init_db
 import storage
@@ -160,6 +162,26 @@ def health():
 async def get_weather():
     """Fetch current weather from the Thai Meteorological Department API."""
     return await fetch_weather()
+
+
+# ---------------------------------------------------------------------------
+# WebSocket — per-building event stream (Phase 3 realtime collaboration)
+# ---------------------------------------------------------------------------
+
+@app.websocket("/buildings/{building_id}/ws")
+async def building_events(
+    websocket: WebSocket,
+    building_id: int,
+    token: Optional[str] = Query(default=None),
+):
+    """Subscribe to incident / node / edge events for a building.
+
+    Anonymous connections are allowed (mobile user-app uses this).
+    Provide `?token=<JWT>` to be attributed in the `actor` field of
+    outbound events.
+    """
+    await realtime.connect(websocket, building_id, token)
+    await realtime.run_ws_loop(websocket, building_id)
 
 
 if __name__ == "__main__":
