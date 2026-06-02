@@ -1,0 +1,83 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["backend/**", "pyproject.toml", ".github/workflows/backend.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["backend/**", "pyproject.toml"]
+
+jobs:
+  lint:
+    name: Lint & Type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install ruff mypy
+          pip install -r backend/requirements.txt
+
+      - name: ruff check
+        run: ruff check backend/
+
+      - name: ruff format (check only)
+        run: ruff format --check backend/
+
+      - name: mypy
+        run: mypy backend/ --ignore-missing-imports
+        continue-on-error: true   # gradually harden
+
+  test:
+    name: pytest + coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      RATE_LIMIT_ENABLED: "0"
+      JWT_SECRET: "ci-test-secret-32-characters-long"
+      DATABASE_URL: "sqlite:///./test.db"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-asyncio pytest-cov httpx
+
+      - name: Run tests with coverage
+        run: pytest -v --cov=. --cov-report=xml --cov-report=term-missing --ignore=seed_demo.py
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: backend/coverage.xml
+        continue-on-error: true
+
+  security:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2023-62
+        continue-on-error: true
