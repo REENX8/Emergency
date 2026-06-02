@@ -1,0 +1,98 @@
+{
+  "meta": {
+    "plan_name": "Multi-Floor Corridor Building",
+    "plan_name_th": "แปลนอาคารทางเดินหลายชั้น",
+    "total_floors": 4,
+    "rooms_per_floor": 7,
+    "room_width_cm": 914,
+    "total_length_cm": 6400,
+    "corridor_width_cm": 190,
+    "staircase_width_cm": 160,
+    "exit_width_cm": 320,
+    "steps_per_half_floor": 9,
+    "exits": 2,
+    "units": "cm"
+  },
+  "exits": [
+    {
+      "id": "exit_1",
+      "label": "Staircase 1",
+      "label_th": "บันได 1",
+      "position": "left",
+      "x_cm": 0,
+      "width_cm": 160,
+      "exit_width_cm": 320
+    },
+    {
+      "id": "exit_2",
+      "label": "Staircase 2",
+      "label_th": "บันได 2",
+      "position": "right",
+      "x_cm": 6400,
+      "width_cm": 160,
+      "exit_width_cm": 320
+    }
+  ],
+  "floors": [
+    {
+      "floor_number": 1,
+      "label": "Floor 1",
+      "label_th": "ชั้น 1",
+      "corridor_y_cm": 95,
+      "rooms": [
+        { "room_id": "F1-R1", "room_number": 1, "x_start_cm": 0,    "x_center_cm": 457,  "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 457  },
+        { "room_id": "F1-R2", "room_number": 2, "x_start_cm": 914,  "x_center_cm": 1371, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 1371 },
+        { "room_id": "F1-R3", "room_number": 3, "x_start_cm": 1828, "x_center_cm": 2285, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 2285 },
+        { "room_id": "F1-R4", "room_number": 4, "x_start_cm": 2742, "x_center_cm": 3200, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 3200 },
+        { "room_id": "F1-R5", "room_number": 5, "x_start_cm": 3656, "x_center_cm": 4115, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 2285 },
+        { "room_id": "F1-R6", "room_number": 6, "x_start_cm": 4570, "x_center_cm": 5029, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 1371 },
+        { "room_id": "F1-R7", "room_number": 7, "x_start_cm": 5484, "x_center_cm": 5943, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 457  }
+      ]
+    },
+    {
+      "floor_number": 2,
+      "label": "Floor 2",
+      "label_th": "ชั้น 2",
+      "corridor_y_cm": 95,
+      "rooms": [
+        { "room_id": "F2-R1", "room_number": 1, "x_start_cm": 0,    "x_center_cm": 457,  "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 457  },
+        { "room_id": "F2-R2", "room_number": 2, "x_start_cm": 914,  "x_center_cm": 1371, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 1371 },
+        { "room_id": "F2-R3", "room_number": 3, "x_start_cm": 1828, "x_center_cm": 2285, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 2285 },
+        { "room_id": "F2-R4", "room_number": 4, "x_start_cm": 2742, "x_center_cm": 3200, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 3200 },
+        { "room_id": "F2-R5", "room_number": 5, "x_start_cm": 3656, "x_center_cm": 4115, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 2285 },
+        { "room_id": "F2-R6", "room_number": 6, "x_start_cm": 4570, "x_center_cm": 5029, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 1371 },
+        { "room_id": "F2-R7", "room_number": 7, "x_start_cm": 5484, "x_center_cm": 5943, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 457  }
+      ]
+    },
+    {
+      "floor_number": 3,
+      "label": "Floor 3",
+      "label_th": "ชั้น 3",
+      "corridor_y_cm": 95,
+      "rooms": [
+        { "room_id": "F3-R1", "room_number": 1, "x_start_cm": 0,    "x_center_cm": 457,  "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 457  },
+        { "room_id": "F3-R2", "room_number": 2, "x_start_cm": 914,  "x_center_cm": 1371, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 1371 },
+        { "room_id": "F3-R3", "room_number": 3, "x_start_cm": 1828, "x_center_cm": 2285, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 2285 },
+        { "room_id": "F3-R4", "room_number": 4, "x_start_cm": 2742, "x_center_cm": 3200, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 3200 },
+        { "room_id": "F3-R5", "room_number": 5, "x_start_cm": 3656, "x_center_cm": 4115, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 2285 },
+        { "room_id": "F3-R6", "room_number": 6, "x_start_cm": 4570, "x_center_cm": 5029, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 1371 },
+        { "room_id": "F3-R7", "room_number": 7, "x_start_cm": 5484, "x_center_cm": 5943, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 457  }
+      ]
+    },
+    {
+      "floor_number": 4,
+      "label": "Floor 4",
+      "label_th": "ชั้น 4",
+      "corridor_y_cm": 95,
+      "rooms": [
+        { "room_id": "F4-R1", "room_number": 1, "x_start_cm": 0,    "x_center_cm": 457,  "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 457  },
+        { "room_id": "F4-R2", "room_number": 2, "x_start_cm": 914,  "x_center_cm": 1371, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 1371 },
+        { "room_id": "F4-R3", "room_number": 3, "x_start_cm": 1828, "x_center_cm": 2285, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 2285 },
+        { "room_id": "F4-R4", "room_number": 4, "x_start_cm": 2742, "x_center_cm": 3200, "width_cm": 914, "nearest_exit": "exit_1", "distance_to_exit_cm": 3200 },
+        { "room_id": "F4-R5", "room_number": 5, "x_start_cm": 3656, "x_center_cm": 4115, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 2285 },
+        { "room_id": "F4-R6", "room_number": 6, "x_start_cm": 4570, "x_center_cm": 5029, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 1371 },
+        { "room_id": "F4-R7", "room_number": 7, "x_start_cm": 5484, "x_center_cm": 5943, "width_cm": 914, "nearest_exit": "exit_2", "distance_to_exit_cm": 457  }
+      ]
+    }
+  ]
+}
