@@ -6,11 +6,13 @@ Usage:
     python seed_demo.py                        # localhost:8000
     python seed_demo.py https://your-app.onrender.com
 """
-import json
 import sys
 import httpx
 
 API = (sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000").rstrip("/")
+
+DEMO_EMAIL    = "demo@evac.ops"
+DEMO_PASSWORD = "demo1234!"
 
 DEMO = {
     "name": "อาคาร IT (Demo)",
@@ -57,6 +59,24 @@ DEMO = {
 }
 
 
+def get_token(client: httpx.Client) -> str:
+    """Register demo user (first run) or login (subsequent runs). Returns JWT."""
+    reg = client.post(f"{API}/auth/register",
+                      json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
+    if reg.status_code == 409:
+        # User already exists — just login
+        login = client.post(f"{API}/auth/login",
+                            json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
+        login.raise_for_status()
+        return login.json()["access_token"]
+    reg.raise_for_status()
+    # First registered user is auto-promoted to admin; log in to get token
+    login = client.post(f"{API}/auth/login",
+                        json={"email": DEMO_EMAIL, "password": DEMO_PASSWORD})
+    login.raise_for_status()
+    return login.json()["access_token"]
+
+
 def main():
     print(f"Seeding demo building to {API} ...")
     with httpx.Client(timeout=30) as client:
@@ -67,8 +87,17 @@ def main():
             print(f"✗ Cannot reach {API}: {e}")
             sys.exit(1)
 
+        # Authenticate
+        try:
+            token = get_token(client)
+        except Exception as e:
+            print(f"✗ Auth failed: {e}")
+            sys.exit(1)
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        print(f"✓ Authenticated as {DEMO_EMAIL}")
+
         # Import building
-        r = client.post(f"{API}/buildings/import", json=DEMO)
+        r = client.post(f"{API}/buildings/import", json=DEMO, headers=auth_headers)
         if r.status_code not in (200, 201):
             print(f"✗ Import failed ({r.status_code}): {r.text}")
             sys.exit(1)
