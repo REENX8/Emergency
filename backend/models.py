@@ -12,11 +12,15 @@ from database import Base
 class Building(Base):
     __tablename__ = "buildings"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    name        = Column(String, nullable=False)
-    address     = Column(String, default="")
-    description = Column(String, default="")
-    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id             = Column(Integer, primary_key=True, index=True)
+    name           = Column(String, nullable=False)
+    address        = Column(String, default="")
+    description    = Column(String, default="")
+    tmd_station_id = Column(String, default="515201")   # TMD weather station for wind data
+    has_sprinkler  = Column(Boolean, default=False)     # affects max travel distance (60m vs 30m)
+    building_type  = Column(String, default="office")   # office / residential / assembly / mixed
+    total_floors   = Column(Integer, default=1)
+    created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floors    = relationship("Floor",    back_populates="building", cascade="all, delete-orphan")
     nodes     = relationship("Node",     back_populates="building", cascade="all, delete-orphan")
@@ -50,6 +54,7 @@ class Node(Base):
     y            = Column(Float, default=0.0)
     capacity     = Column(Integer, default=20)
     floor_number = Column(Integer, default=1)
+    area_m2      = Column(Float, nullable=True)      # optional floor area for occupancy check
 
     building = relationship("Building", back_populates="nodes")
 
@@ -80,3 +85,26 @@ class Incident(Base):
     is_active     = Column(Boolean, default=True)
 
     building = relationship("Building", back_populates="incidents")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id            = Column(Integer, primary_key=True, index=True)
+    email         = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    role          = Column(String, nullable=False, default="operator")  # admin / operator / viewer
+    created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    actor_email = Column(String, nullable=True)
+    action      = Column(String, nullable=False, index=True)   # e.g. building.create
+    target_type = Column(String, nullable=True)                # e.g. building / node / incident
+    target_id   = Column(String, nullable=True)
+    payload     = Column(String, default="")                   # JSON-encoded snapshot (short)
+    created_at  = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)

@@ -3,8 +3,28 @@ schemas.py — Pydantic request / response schemas
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Generic, Optional, TypeVar
 from pydantic import BaseModel, Field
+
+
+# ---------------------------------------------------------------------------
+# Pagination envelope (used by list_*) — generic over the item type.
+# ---------------------------------------------------------------------------
+
+T = TypeVar("T")
+
+
+class Page(BaseModel, Generic[T]):
+    items:  list[T]
+    total:  int
+    limit:  int
+    offset: int
+
+
+# Standard size caps — strings used widely, lists for batch endpoints.
+SHORT_STR  = Field(max_length=200)
+MEDIUM_STR = Field(default="", max_length=500)
+NODE_KEY   = Field(min_length=1, max_length=64)
 
 
 # ---------------------------------------------------------------------------
@@ -12,17 +32,39 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class BuildingCreate(BaseModel):
-    name:        str
-    address:     str = ""
-    description: str = ""
+    name:           str  = Field(..., min_length=1, max_length=200)
+    address:        str  = Field(default="", max_length=500)
+    description:    str  = Field(default="", max_length=1000)
+    tmd_station_id: str  = Field(
+        default="515201",
+        max_length=20,
+        description="TMD weather station ID for wind data (default: Bangna, Bangkok)",
+    )
+    has_sprinkler:  bool = False
+    building_type:  str  = Field(default="office", max_length=20)
+    total_floors:   int  = Field(default=1, ge=1, le=200)
+
+
+class BuildingUpdate(BaseModel):
+    name:           Optional[str]  = Field(default=None, min_length=1, max_length=200)
+    address:        Optional[str]  = Field(default=None, max_length=500)
+    description:    Optional[str]  = Field(default=None, max_length=1000)
+    tmd_station_id: Optional[str]  = Field(default=None, max_length=20)
+    has_sprinkler:  Optional[bool] = None
+    building_type:  Optional[str]  = Field(default=None, max_length=20)
+    total_floors:   Optional[int]  = Field(default=None, ge=1, le=200)
 
 
 class BuildingResponse(BaseModel):
-    id:          int
-    name:        str
-    address:     str
-    description: str
-    created_at:  datetime
+    id:             int
+    name:           str
+    address:        str
+    description:    str
+    tmd_station_id: str
+    has_sprinkler:  bool
+    building_type:  str
+    total_floors:   int
+    created_at:     datetime
 
     model_config = {"from_attributes": True}
 
@@ -48,21 +90,23 @@ class FloorResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class NodeCreate(BaseModel):
-    node_key:     str  = Field(..., description="Unique ID within this building, e.g. 'r101'")
-    type:         str  = Field(default="room", description="room / corridor / stair / exit")
-    label:        str  = ""
+    node_key:     str   = Field(..., min_length=1, max_length=64, description="Unique ID within this building, e.g. 'r101'")
+    type:         str   = Field(default="room", max_length=20, description="room / corridor / stair / exit")
+    label:        str   = Field(default="", max_length=200)
     x:            float = 0.0
     y:            float = 0.0
-    capacity:     int   = 20
-    floor_number: int   = 1
+    capacity:     int   = Field(default=20, ge=0, le=100000)
+    floor_number: int   = Field(default=1, ge=-50, le=200)
+    area_m2:      Optional[float] = Field(default=None, ge=0, le=100000)
 
 
 class NodeUpdate(BaseModel):
-    label:    Optional[str]   = None
+    label:    Optional[str]   = Field(default=None, max_length=200)
     x:        Optional[float] = None
     y:        Optional[float] = None
-    capacity: Optional[int]   = None
-    type:     Optional[str]   = None
+    capacity: Optional[int]   = Field(default=None, ge=0, le=100000)
+    type:     Optional[str]   = Field(default=None, max_length=20)
+    area_m2:  Optional[float] = Field(default=None, ge=0, le=100000)
 
 
 class NodeResponse(BaseModel):
@@ -75,6 +119,7 @@ class NodeResponse(BaseModel):
     y:            float
     capacity:     int
     floor_number: int
+    area_m2:      Optional[float] = None
 
     model_config = {"from_attributes": True}
 
@@ -84,10 +129,10 @@ class NodeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class EdgeCreate(BaseModel):
-    u_key:      str
-    v_key:      str
-    distance_m: float = Field(default=10.0, gt=0)
-    width_m:    float = Field(default=2.0, gt=0)
+    u_key:      str   = Field(..., min_length=1, max_length=64)
+    v_key:      str   = Field(..., min_length=1, max_length=64)
+    distance_m: float = Field(default=10.0, gt=0, le=10000)
+    width_m:    float = Field(default=2.0,  gt=0, le=100)
     is_stair:   bool  = False
 
 
@@ -108,8 +153,8 @@ class EdgeResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class IncidentCreate(BaseModel):
-    node_key:      str
-    incident_type: str  = Field(..., description="fire / smoke / crowd")
+    node_key:      str   = Field(..., min_length=1, max_length=64)
+    incident_type: str   = Field(..., max_length=20, description="fire / smoke / crowd")
     severity:      float = Field(default=0.5, ge=0.0, le=1.0)
 
 
@@ -130,11 +175,12 @@ class IncidentResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class BuildingImportPayload(BaseModel):
-    name:        str
-    address:     str = ""
-    description: str = ""
-    nodes:       list[NodeCreate] = []
-    edges:       list[EdgeCreate] = []
+    name:           str = Field(..., min_length=1, max_length=200)
+    address:        str = Field(default="", max_length=500)
+    description:    str = Field(default="", max_length=1000)
+    tmd_station_id: str = Field(default="515201", max_length=20)
+    nodes:          list[NodeCreate] = Field(default_factory=list, max_length=5000)
+    edges:          list[EdgeCreate] = Field(default_factory=list, max_length=20000)
 
 
 class BuildingImportResponse(BuildingResponse):

@@ -183,11 +183,11 @@ class TestComputeSafetyScore:
         G = make_building_graph()
         result = compute_safety_score(G)
         f = result["factors"]
-        # exit_ratio * 30 + connectivity * 40 + bottleneck * 30 == score
+        # exit_coverage*40 + min_cut_factor*30 + edge_connectivity_ratio*30 == score
         reconstructed = (
-            f["exit_ratio"] * 30 +
-            f["connectivity"] * 40 +
-            f["bottleneck_resilience"] * 30
+            f["exit_coverage"]            * 40 +
+            f["min_cut_factor"]           * 30 +
+            f["edge_connectivity_ratio"]  * 30
         )
         assert math.isclose(result["score"], round(reconstructed, 1), abs_tol=0.1)
 

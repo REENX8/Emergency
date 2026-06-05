@@ -15,7 +15,7 @@ response so the simulation continues to work offline.
 
 import httpx
 import math
-import asyncio
+import time
 import logging
 from typing import Optional
 
@@ -38,6 +38,28 @@ _MOCK_WEATHER = {
     "source": "mock",
 }
 
+# Module-level pooled httpx client (initialised by lifespan in main.py).
+# Reusing the connection pool avoids per-request TCP/TLS handshakes.
+_client: Optional[httpx.AsyncClient] = None
+
+# In-memory TTL cache: station_id -> (expires_at_epoch, weather_dict)
+_CACHE_TTL_SECONDS = 60.0
+_cache: dict[str, tuple[float, dict]] = {}
+
+
+def set_http_client(client: Optional[httpx.AsyncClient]) -> None:
+    """Inject the shared httpx client (called from FastAPI lifespan)."""
+    global _client
+    _client = client
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Return the shared client if available, else a one-off client."""
+    if _client is not None:
+        return _client
+    # Fallback for callers outside the FastAPI lifespan (eg. CLI scripts, tests)
+    return httpx.AsyncClient(timeout=5.0)
+
 
 async def fetch_weather(station_id: str = DEFAULT_STATION) -> dict:
     """
@@ -47,20 +69,43 @@ async def fetch_weather(station_id: str = DEFAULT_STATION) -> dict:
       wind_speed_ms, wind_direction_deg, temperature_c, humidity_pct,
       description, station, source ("tmd" | "mock")
 
-    Falls back to _MOCK_WEATHER on network error or API failure.
+    Results are cached per station for `_CACHE_TTL_SECONDS`. Falls back to
+    `_MOCK_WEATHER` on network error or API failure.
     """
+    now = time.time()
+    cached = _cache.get(station_id)
+    if cached and cached[0] > now:
+        return cached[1].copy()
+
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        client = _get_client()
+        if _client is None:
+            # one-off client: must async-close after use
+            async with client:
+                resp = await client.get(
+                    TMD_BASE,
+                    params={"StationID": station_id, "output": "json"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        else:
             resp = await client.get(
                 TMD_BASE,
                 params={"StationID": station_id, "output": "json"},
+                timeout=5.0,
             )
             resp.raise_for_status()
             data = resp.json()
-            return _parse_tmd_response(data, station_id)
+        parsed = _parse_tmd_response(data, station_id)
+        _cache[station_id] = (now + _CACHE_TTL_SECONDS, parsed)
+        return parsed.copy()
     except Exception as exc:
         logger.warning("TMD API unavailable (%s), using mock weather.", exc)
-        return _MOCK_WEATHER.copy()
+        mock = _MOCK_WEATHER.copy()
+        mock["station"] = station_id
+        # cache the mock for a short window so we don't hammer a dead endpoint
+        _cache[station_id] = (now + _CACHE_TTL_SECONDS, mock)
+        return mock.copy()
 
 
 def _parse_tmd_response(data: dict, station_id: str) -> dict:

@@ -4,52 +4,47 @@ graph_builder.py — Building graph construction using NetworkX
 Graph Theory Model:
   - Nodes: physical spaces (rooms, corridors, stairs, exits)
   - Edges: passable connections between adjacent spaces
-  - Edge weight: f(distance, corridor_width, crowd_density)
-        w = (distance / walk_speed) * width_bottleneck * crowd_penalty
+  - Edge weight: w(e) = d / (v_base × (1 − ρ(e)) × (1 − R(e)))
 
-The width bottleneck captures the hydraulic analogy for crowd flow:
-narrow passages behave like flow restrictors, slowing evacuation even
-when the path is short. Crowd penalty uses a density-speed model
-derived from the Weidmann fundamental diagram.
+If R(e) ≥ 0.9 the edge is impassable (weight = ∞).
+ρ(e) = crowd density [0, 1), R(e) = smoke/risk level [0, 1].
 """
 
 import networkx as nx
 from typing import Dict, Tuple
 
 
-WALK_SPEED_MS = 1.4       # m/s (normal walking, slightly conservative)
-STAIR_SPEED_MS = 0.6      # m/s (descending stairs under stress)
-REFERENCE_WIDTH = 3.0     # m  (corridor width that gets weight factor = 1.0)
-MAX_CROWD_SLOWDOWN = 4.0  # multiplier at full capacity (density = 1.0)
+WALK_SPEED_MS  = 1.4   # m/s (normal walking)
+STAIR_SPEED_MS = 0.6   # m/s (descending stairs under stress)
 
 
 def calculate_edge_weight(
     distance: float,
-    width: float,
     crowd_density: float,
+    risk: float = 0.0,
     is_stair: bool = False,
 ) -> float:
     """
     Compute edge traversal cost in seconds.
 
+    Formula: w(e) = d / (v_base × (1 − ρ) × (1 − R))
+    If R ≥ 0.9 or denominator ≤ 0 → weight = infinity (impassable).
+
     Args:
-        distance: length of segment in metres
-        width: usable width in metres (min 0.5 to avoid division issues)
-        crowd_density: occupancy ratio 0.0 (empty) … 1.0 (full capacity)
-        is_stair: True for vertical stairwell segments
+        distance:      length of segment in metres
+        crowd_density: occupancy ratio 0.0 (empty) … <1.0 (jammed)
+        risk:          smoke/risk level 0.0 … 1.0
+        is_stair:      True for vertical stairwell segments
     Returns:
         Traversal time in seconds (used as graph edge weight)
     """
+    if risk >= 0.9:
+        return float("inf")
     speed = STAIR_SPEED_MS if is_stair else WALK_SPEED_MS
-    base_time = distance / speed
-
-    # Narrower corridor → higher bottleneck factor
-    width_factor = REFERENCE_WIDTH / max(width, 0.5)
-
-    # Weidmann-inspired: speed drops linearly to 0 at jam density
-    crowd_penalty = 1.0 + crowd_density * (MAX_CROWD_SLOWDOWN - 1.0)
-
-    return base_time * width_factor * crowd_penalty
+    denominator = speed * (1.0 - crowd_density) * (1.0 - risk)
+    if denominator <= 0:
+        return float("inf")
+    return distance / denominator
 
 
 def build_evacuation_graph(crowd_densities: Dict[str, float] | None = None) -> nx.Graph:
@@ -150,8 +145,8 @@ def build_evacuation_graph(crowd_densities: Dict[str, float] | None = None) -> n
     for u, v, dist, width, is_stair in edge_defs:
         # Use average crowd density of the two endpoint nodes
         density = (crowd_densities.get(u, 0.0) + crowd_densities.get(v, 0.0)) / 2.0
-        weight = calculate_edge_weight(dist, width, density, is_stair)
-        base_time = calculate_edge_weight(dist, width, 0.0, is_stair)
+        weight = calculate_edge_weight(dist, density, 0.0, is_stair)
+        base_time = calculate_edge_weight(dist, 0.0, 0.0, is_stair)
         G.add_edge(u, v,
                    weight=weight,
                    distance=dist,
@@ -196,14 +191,15 @@ def remove_node_safe(G: nx.Graph, node_id: str) -> bool:
 def update_crowd_density(G: nx.Graph, node_id: str, density: float) -> None:
     """
     Recalculate weights for all edges adjacent to node_id after a
-    crowd-density change. density ∈ [0, 1].
+    crowd-density change. density ∈ [0, 1).
     """
     if node_id not in G:
         return
     for neighbor in list(G.neighbors(node_id)):
         e = G[node_id][neighbor]
         avg_density = (density + e.get("crowd_density", 0.0)) / 2.0
+        risk = e.get("smoke_level", 0.0)
         e["weight"] = calculate_edge_weight(
-            e["distance"], e["width"], avg_density, e.get("is_stair", False)
+            e["distance"], avg_density, risk, e.get("is_stair", False)
         )
         e["crowd_density"] = avg_density

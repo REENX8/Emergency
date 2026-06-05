@@ -13,20 +13,24 @@ from smoke_propagation import (
     apply_smoke_levels,
     smoke_levels_to_cytoscape,
 )
+from graph_builder import calculate_edge_weight, WALK_SPEED_MS
 
 
 def make_linear_graph() -> nx.Graph:
     """
-    FIRE --(10m)--> MID --(10m)--> FAR
+    FIRE --(10m)--> MID --(15m)--> FAR
     Positions in pixels (6 px/m): FIRE=(0,0), MID=(60,0), FAR=(120,0)
+    base_time = d / v_base (zero crowd, zero risk)
     """
     G = nx.Graph()
     G.add_node("FIRE", x=0,   y=0,  type="room",     capacity=10)
     G.add_node("MID",  x=60,  y=0,  type="corridor", capacity=20)
     G.add_node("FAR",  x=120, y=0,  type="exit",     capacity=50)
-    G.add_edge("FIRE", "MID", weight=10.0, base_time=10.0, distance=10.0,
+    bt1 = 10.0 / WALK_SPEED_MS
+    bt2 = 15.0 / WALK_SPEED_MS
+    G.add_edge("FIRE", "MID", weight=bt1, base_time=bt1, distance=10.0,
                width=2.0, crowd_density=0.0, is_stair=False)
-    G.add_edge("MID",  "FAR", weight=15.0, base_time=15.0, distance=15.0,
+    G.add_edge("MID",  "FAR", weight=bt2, base_time=bt2, distance=15.0,
                width=2.0, crowd_density=0.0, is_stair=False)
     return G
 
@@ -126,7 +130,8 @@ class TestApplySmokeLevels:
         smoke = {("FIRE", "MID"): s, ("MID", "FAR"): 0.0}
         apply_smoke_levels(G, smoke)
         e = G["FIRE"]["MID"]
-        expected = e["base_time"] * (1 + 2 * e["crowd_density"]) * (1 + 4 * s)
+        # w = d / (v_base × (1 − ρ) × (1 − s))
+        expected = calculate_edge_weight(e["distance"], e["crowd_density"], s, e.get("is_stair", False))
         assert math.isclose(e["weight"], expected, rel_tol=1e-6)
 
     def test_zero_smoke_preserves_base_time(self):

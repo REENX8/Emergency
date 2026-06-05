@@ -1,279 +1,304 @@
 /**
- * SimulationPage — evacuation simulation for a DB-backed building.
- *
- * New features (v2):
- *   - Algorithm toggle: Dijkstra / A* / Compare
- *   - Auto smoke propagation when fire incident is reported
- *   - Analysis tab (safety, connectivity, bottleneck, max-flow, experiments)
- *   - Max-flow: person count badge on exit nodes
- *   - Bottleneck highlight on BuildingMap
+ * SimulationPage — EVAC·OPS hi-fi design, wired to real API.
+ * Route: /buildings/:buildingId/simulate
  */
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 
-import BuildingMap    from '../components/BuildingMap';
-import ControlPanel   from '../components/ControlPanel';
-import ResultsTable   from '../components/ResultsTable';
-import IncidentPanel  from '../components/IncidentPanel';
-import AnalysisPanel  from '../components/AnalysisPanel';
-
-const API = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-
-const TAB = { results: 'results', analysis: 'analysis' };
-
-const tabStyle = (active) => ({
-  padding: '6px 16px', borderRadius: '6px 6px 0 0', border: 'none',
-  cursor: 'pointer', fontWeight: 600, fontSize: 13,
-  background: active ? '#1e293b' : 'transparent',
-  color: active ? '#f1f5f9' : '#64748b',
-  borderBottom: active ? 'none' : '1px solid #334155',
-});
+import { http } from '../api/client';
+import FloorPlan from '../js/FloorPlan';
+import { ControlPanel, ResultsPanel, StatusStrip } from '../js/Panels';
+import { SimTopBar, Legend } from '../js/TopBar';
+import {
+  propagateSmoke,
+  computeFireSpread,
+  planEvacuation,
+  safetyScore,
+} from '../js/sim';
+import '../styles.css';
 
 export default function SimulationPage() {
   const { buildingId } = useParams();
-  const navigate       = useNavigate();
 
-  const [building,      setBuilding]      = useState(null);
-  const [graph,         setGraph]         = useState(null);
-  const [nodes,         setNodes]         = useState([]);
-  const [result,        setResult]        = useState(null);
-  const [compareResult, setCompareResult] = useState(null);   // dedicated compare mode
-  const [loading,       setLoading]       = useState(false);
-  const [error,         setError]         = useState(null);
-  const [weather,       setWeather]       = useState(null);
-  const [selectedPath,  setSelectedPath]  = useState(null);
-  const [clickedNode,   setClickedNode]   = useState(null);
-  const [tab,           setTab]           = useState(TAB.results);
-  const [algorithm,     setAlgorithm]     = useState('dijkstra'); // 'dijkstra' | 'astar' | 'compare'
+  /* ── Remote data ─────────────────────────────────────────────── */
+  const [building,  setBuilding]  = useState(null);
+  const [nodes,     setNodes]     = useState([]);
+  const [edges,     setEdges]     = useState([]);
+  const [weather,   setWeather]   = useState(null);
+  const [incidents, setIncidents] = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
-  // Visual overlays from Analysis tab
-  const [bottleneckEdges, setBottleneckEdges] = useState([]);
-  const [maxflowBadges,   setMaxflowBadges]   = useState({});  // {exit_node: persons}
+  /* ── Scenario state ──────────────────────────────────────────── */
+  const [fireLocation,  setFireLocation]  = useState('');
+  const [algorithm,     setAlgorithm]     = useState('compare');
+  const [blockedExits,  setBlockedExits]  = useState([]);
+  const [crowd,         setCrowd]         = useState({});
+  const [occupied,      setOccupied]      = useState([]);
+  const [useWeather,    setUseWeather]    = useState(true);
+  const [manualWind,    setManualWind]    = useState({ deg: 135, ms: 3.5 });
 
-  // Smoke annotations from new model (per edge)
-  const [smokeAnnotations, setSmokeAnnotations] = useState([]);
+  /* ── Timeline ────────────────────────────────────────────────── */
+  const [fireTime,  setFireTime]  = useState(0);
+  const [playing,   setPlaying]   = useState(false);
 
-  const loadGraph = useCallback(async () => {
-    try {
-      const [gRes, nRes] = await Promise.all([
-        axios.get(`${API}/buildings/${buildingId}/graph`),
-        axios.get(`${API}/buildings/${buildingId}/nodes`),
-      ]);
-      setGraph(gRes.data);
-      setNodes(nRes.data);
-    } catch { /* ignore network errors */ }
+  /* ── Error state ─────────────────────────────────────────────── */
+  const [loadError,    setLoadError]    = useState(null);
+
+  /* ── UI state ────────────────────────────────────────────────── */
+  const [tab,          setTab]          = useState('results');
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [clickedNode,  setClickedNode]  = useState(null);
+  const [analysisOpen, setAnalysisOpen] = useState({
+    safety: true, connectivity: true, bottleneck: false, maxflow: false,
+  });
+  const [showBottleneck, setShowBottleneck] = useState(false);
+
+  const rafRef = useRef(null);
+  const lastTickRef = useRef(0);
+
+  /* ── Load building data ──────────────────────────────────────── */
+  useEffect(() => {
+    if (!buildingId) return;
+    setLoading(true);
+
+    Promise.all([
+      http.get(`/buildings/${buildingId}`),
+      http.get(`/buildings/${buildingId}/nodes`, { params: { limit: 500 } }),
+      http.get(`/buildings/${buildingId}/edges`),
+      http.get('/weather').catch(() => ({ data: null })),
+      http.get(`/buildings/${buildingId}/incidents`, { params: { limit: 200 } })
+          .catch(() => ({ data: { items: [] } })),
+    ]).then(([bRes, nRes, eRes, wRes, iRes]) => {
+      setBuilding(bRes.data);
+
+      // Normalize nodes: backend uses node_key, design uses id
+      const rawNodes = nRes.data?.items ?? nRes.data ?? [];
+      const normalized = rawNodes.map(n => ({
+        id: n.node_key || n.id,
+        type: n.type,
+        label: n.label || n.node_key || n.id,
+        x: n.x || 0,
+        y: n.y || 0,
+        floor: n.floor_number || n.floor || 1,
+        cap: n.capacity || n.cap || 0,
+        capacity: n.capacity || n.cap || 0,
+      }));
+      setNodes(normalized);
+
+      // Normalize edges: backend uses u_key/v_key, design uses u/v
+      const rawEdges = eRes.data || [];
+      const normEdges = rawEdges.map(e => ({
+        u: e.u_key || e.u,
+        v: e.v_key || e.v,
+        distance_m: e.distance_m || 10,
+        width_m: e.width_m || 2,
+        is_stair: e.is_stair || false,
+      }));
+      setEdges(normEdges);
+
+      if (wRes.data) setWeather(wRes.data);
+      setIncidents(iRes.data?.items ?? iRes.data ?? []);
+
+      // Set defaults
+      const rooms = normalized.filter(n => n.type === 'room');
+      const firstRoom = rooms[0]?.id || normalized[0]?.id || '';
+      setFireLocation(firstRoom);
+      setOccupied(rooms.map(n => n.id));
+      const corridors = normalized.filter(n => n.type === 'corridor');
+      if (corridors.length > 0) {
+        const defaultCrowd = {};
+        corridors.forEach(c => { defaultCrowd[c.id] = 0; });
+        if (corridors[1]) defaultCrowd[corridors[1].id] = 0.3;
+        setCrowd(defaultCrowd);
+      }
+    }).catch(err => {
+      console.error('Failed to load building data:', err);
+      setLoadError(
+        err?.response?.data?.detail
+        || err?.message
+        || 'Failed to load building data. Please refresh the page.'
+      );
+    }).finally(() => {
+      setLoading(false);
+    });
   }, [buildingId]);
 
+  /* ── Derived data ────────────────────────────────────────────── */
+  const wind = useWeather && weather
+    ? { deg: weather.wind_direction_deg, ms: weather.wind_speed_ms }
+    : manualWind;
+
+  const smoke = useMemo(
+    () => propagateSmoke(nodes, edges, fireLocation, wind.deg),
+    [nodes, edges, fireLocation, wind.deg]);
+
+  const fireSpread = useMemo(
+    () => computeFireSpread(nodes, edges, fireLocation, wind.deg, wind.ms),
+    [nodes, edges, fireLocation, wind.deg, wind.ms]);
+
+  const routes_dij = useMemo(
+    () => planEvacuation(nodes, edges, {
+      fire_location: fireLocation, occupied_rooms: occupied,
+      blocked_exits: blockedExits, crowd, smoke, algorithm: 'dijkstra',
+    }),
+    [nodes, edges, fireLocation, occupied, blockedExits, crowd, smoke]);
+
+  const routes_astar = useMemo(
+    () => planEvacuation(nodes, edges, {
+      fire_location: fireLocation, occupied_rooms: occupied,
+      blocked_exits: blockedExits, crowd, smoke, algorithm: 'astar',
+    }),
+    [nodes, edges, fireLocation, occupied, blockedExits, crowd, smoke]);
+
+  const activeRoutes  = algorithm === 'astar' ? routes_astar : routes_dij;
+  const compareAstar  = algorithm === 'compare' ? routes_astar : null;
+
+  const bestPath = useMemo(() => {
+    const reachable = activeRoutes.filter(r => r.reachable);
+    if (!reachable.length) return null;
+    return reachable.reduce((a, b) => (a.time_s < b.time_s ? a : b)).path;
+  }, [activeRoutes]);
+
+  const comparePath = useMemo(() => {
+    if (!compareAstar) return null;
+    const reachable = compareAstar.filter(r => r.reachable);
+    if (!reachable.length) return null;
+    return reachable.reduce((a, b) => (a.time_s < b.time_s ? a : b)).path;
+  }, [compareAstar]);
+
+  const safety = useMemo(() => safetyScore(nodes, edges), [nodes, edges]);
+  const bottlenecks = useMemo(() => {
+    const exits = nodes.filter(n => n.type === 'exit').map(n => n.id);
+    const stairs = nodes.filter(n => n.type === 'stair').map(n => n.id);
+    // Stair→exit connections are common single points of failure
+    return exits.flatMap(exit =>
+      edges
+        .filter(e => (e.u === exit && stairs.includes(e.v)) || (e.v === exit && stairs.includes(e.u)))
+        .map(e => [e.u === exit ? e.v : e.u, exit])
+    ).slice(0, 4);
+  }, [nodes, edges]);
+
+  const maxflowBadges = analysisOpen.maxflow
+    ? Object.fromEntries(nodes.filter(n => n.type === 'exit').map((n, i) => [n.id, 24 + i * 12]))
+    : {};
+
+  /* ── Fire timeline auto-play ─────────────────────────────────── */
   useEffect(() => {
-    axios.get(`${API}/buildings/${buildingId}`).then(r => setBuilding(r.data)).catch(() => {});
-    axios.get(`${API}/weather`).then(r => setWeather(r.data)).catch(() => {});
-    loadGraph();
-  }, [buildingId, loadGraph]);
+    if (!playing || !fireSpread) return;
+    const max = Math.ceil(fireSpread.max_time);
+    lastTickRef.current = performance.now();
+    const tick = (now) => {
+      const dt = (now - lastTickRef.current) / 1000;
+      lastTickRef.current = now;
+      setFireTime(prev => {
+        const next = prev + dt * 5;
+        if (next >= max) { setPlaying(false); return max; }
+        return next;
+      });
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [playing, fireSpread]);
 
-  // ---------------------------------------------------------------------------
-  // Evacuate
-  // ---------------------------------------------------------------------------
-  const runEvacuation = useCallback(async (params) => {
-    setLoading(true);
-    setError(null);
-    setCompareResult(null);
+  useEffect(() => { setFireTime(0); setPlaying(false); }, [fireLocation]);
 
-    const algo = algorithm === 'compare' ? 'dijkstra' : algorithm;
+  /* ── Stats ───────────────────────────────────────────────────── */
+  const totalEvac   = activeRoutes.filter(r => r.reachable).reduce((s, r) => s + r.time_s, 0);
+  const avgEvac     = totalEvac / Math.max(1, activeRoutes.filter(r => r.reachable).length);
+  const unreachable = activeRoutes.filter(r => !r.reachable).length;
+  const slowest     = activeRoutes.filter(r => r.reachable).reduce((a, b) => (a.time_s > b.time_s ? a : b), { time_s: 0 });
 
-    try {
-      if (algorithm === 'compare') {
-        // Use dedicated compare endpoint
-        const { data } = await axios.post(
-          `${API}/buildings/${buildingId}/evacuate/compare`,
-          {
-            fire_location:         params.fire_location,
-            crowd_densities:       (params.crowd_densities || []).map(cd => ({
-              node_key: cd.node_id || cd.node_key, density: cd.density,
-            })),
-            use_weather_wind:      params.use_weather_wind,
-            manual_wind_direction: params.manual_wind_direction,
-            manual_wind_speed:     params.manual_wind_speed,
-          }
-        );
-        setCompareResult(data);
-        setSmokeAnnotations(data.smoke_annotations || []);
-        setWeather(data.weather);
-        setResult(null);
-        setSelectedPath(null);
-      } else {
-        const { data } = await axios.post(
-          `${API}/buildings/${buildingId}/evacuate`,
-          { ...params, algorithm: algo, compare_algorithms: true }
-        );
-        setResult(data);
-        setWeather(data.weather);
-        setSelectedPath(null);
-      }
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'API error');
-    } finally {
-      setLoading(false);
-    }
-  }, [buildingId, algorithm]);
-
-  // ---------------------------------------------------------------------------
-  // Auto smoke propagation when fire incident is reported
-  // ---------------------------------------------------------------------------
-  const handleIncidentChange = useCallback(async (newIncident) => {
-    setResult(null);
-    loadGraph();
-
-    // Auto-propagate smoke if it's a fire incident
-    if (newIncident?.incident_type === 'fire') {
-      try {
-        const { data } = await axios.post(
-          `${API}/buildings/${buildingId}/smoke/propagate`,
-          { fire_node: newIncident.node_key, use_weather_wind: true }
-        );
-        setSmokeAnnotations(data.smoke_annotations || []);
-      } catch { /* ignore */ }
-    }
-  }, [buildingId, loadGraph]);
-
-  // ---------------------------------------------------------------------------
-  // Derived display data
-  // ---------------------------------------------------------------------------
-  const activeResult   = result || (compareResult ? {
-    fire_location:       compareResult.fire_location,
-    primary_routes:      compareResult.comparison?.dijkstra || [],
-    comparison:          compareResult.comparison,
-    smoke_blocked_edges: (compareResult.smoke_annotations || [])
-      .filter(a => a.blocked).map(a => [a.source, a.target]),
-    graph_state:         compareResult.graph_state,
-    weather:             compareResult.weather,
-  } : null);
-
-  const displayGraph  = activeResult?.graph_state || (graph ? { nodes: graph.nodes, edges: graph.edges } : null);
-  const fireNode      = activeResult?.fire_location || null;
-  const smokeEdges    = activeResult?.smoke_blocked_edges || [];
-  const bestPath      = activeResult?.primary_routes?.find(r => r.reachable)?.path || null;
-
-  const floors         = result?.floors || graph?.floors || [];
-  const activeFloor    = floors.find(f => f.image_filename);
-  const floorImageUrl  = activeFloor?.image_filename
-    ? (activeFloor.image_filename.startsWith('http')
-        ? activeFloor.image_filename
-        : `${API}/uploads/${activeFloor.image_filename}`)
-    : null;
-
-  if (!building) return <div style={{ padding: 40, color: '#94a3b8' }}>กำลังโหลด...</div>;
+  if (loading) {
+    return (
+      <div className="sim-screen" style={{display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <div className="mono small dim">กำลังโหลด...</div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-      {/* Top bar */}
-      <div style={{
-        background: '#1e293b', borderBottom: '1px solid #334155',
-        padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-      }}>
-        <button onClick={() => navigate('/')} style={{
-          background: '#334155', border: 'none', borderRadius: 6,
-          padding: '5px 12px', color: '#cbd5e1', cursor: 'pointer', fontSize: 13,
-        }}>← กลับ</button>
-
-        <span style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
-          🚨 {building.name}
-        </span>
-
-        {/* Algorithm toggle (Feature 1) */}
-        <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
-          {['dijkstra', 'astar', 'compare'].map(a => (
-            <button key={a} onClick={() => setAlgorithm(a)} style={{
-              padding: '4px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
-              fontWeight: 600, fontSize: 12,
-              background: algorithm === a ? '#3b82f6' : '#334155',
-              color: '#fff',
-            }}>
-              {a === 'dijkstra' ? 'Dijkstra' : a === 'astar' ? 'A*' : 'Compare'}
-            </button>
-          ))}
+    <div className="sim-screen">
+      {loadError && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+          background: '#c0392b', color: '#fff',
+          padding: '10px 16px', fontSize: '13px', fontFamily: 'monospace',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <span>⚠ {loadError}</span>
+          <button
+            onClick={() => setLoadError(null)}
+            style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '16px' }}
+          >✕</button>
         </div>
+      )}
+      <SimTopBar
+        building={building}
+        algorithm={algorithm}
+        setAlgorithm={setAlgorithm}
+        weather={weather}
+        useWeather={useWeather}
+      />
 
-        {weather && (
-          <span style={{ fontSize: 12, color: '#475569', marginLeft: 8 }}>
-            💨 {weather.wind_speed_ms} m/s · {weather.wind_direction_deg}°
-          </span>
-        )}
-
-        {error && (
-          <span style={{ color: '#f87171', fontSize: 13, background: '#450a0a',
-            padding: '4px 10px', borderRadius: 6, marginLeft: 'auto' }}>
-            ⚠ {error}
-          </span>
-        )}
-
-        <button onClick={() => navigate(`/buildings/${buildingId}/edit`)} style={{
-          marginLeft: error ? 0 : 'auto',
-          background: '#334155', border: 'none', borderRadius: 6,
-          padding: '5px 12px', color: '#cbd5e1', cursor: 'pointer', fontSize: 13,
-        }}>✏️ แก้ไขแปลน</button>
-      </div>
-
-      {/* Main area */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="sim-body">
         <ControlPanel
-          onEvacuate={runEvacuation}
-          loading={loading}
-          weather={weather}
           nodes={nodes}
+          fireLocation={fireLocation} setFireLocation={setFireLocation}
+          blockedExits={blockedExits} setBlockedExits={setBlockedExits}
+          crowd={crowd} setCrowd={setCrowd}
+          occupied={occupied} setOccupied={setOccupied}
+          useWeather={useWeather} setUseWeather={setUseWeather}
+          manualWind={manualWind} setManualWind={setManualWind}
+          weather={weather}
         />
 
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-          {/* Map */}
-          <BuildingMap
-            elements={displayGraph}
-            fireNode={fireNode}
-            smokeEdges={smokeEdges}
-            selectedPath={selectedPath}
-            bestPath={bestPath}
-            floorImageUrl={floorImageUrl}
-            onNodeClick={(nodeId) => setClickedNode(nodeId)}
-            smokeAnnotations={smokeAnnotations}
-            bottleneckEdges={bottleneckEdges}
-            maxflowBadges={maxflowBadges}
-            compareResult={algorithm === 'compare' ? compareResult?.comparison : null}
-          />
+        <div className="sim-center">
+          <div className="map-wrap">
+            <div className="map-corner top-left">
+              <span className="mono small dim">VIEW</span>
+              <span className="mono small">FLAT · {[...new Set(nodes.map(n => n.floor))].length}F</span>
+              <span className="mono small dim">·</span>
+              <span className="mono small">SCALE 1:240</span>
+            </div>
+            <div className="map-corner top-right">
+              <Legend smokeOn={Object.values(smoke).some(v => v > 0.05)} />
+            </div>
 
-          {/* Tab bar */}
-          <div style={{
-            display: 'flex', gap: 0, borderBottom: '1px solid #334155',
-            paddingLeft: 14, paddingTop: 8, background: '#0f172a',
-          }}>
-            <button style={tabStyle(tab === TAB.results)} onClick={() => setTab(TAB.results)}>
-              📋 Results
-            </button>
-            <button style={tabStyle(tab === TAB.analysis)} onClick={() => setTab(TAB.analysis)}>
-              📊 Analysis
-            </button>
+            <FloorPlan
+              nodes={nodes} edges={edges}
+              fireNode={fireLocation} smoke={smoke}
+              fireSpread={fireSpread} fireTime={fireTime}
+              selectedPath={selectedRoute?.path} bestPath={bestPath}
+              comparePath={comparePath}
+              bottleneckEdges={showBottleneck ? bottlenecks : []}
+              maxflowBadges={maxflowBadges}
+              highlightedNode={clickedNode}
+              onNodeClick={setClickedNode}
+              formulaOverlay={false}
+            />
+
+            <StatusStrip
+              fireSpread={fireSpread} fireTime={fireTime} playing={playing}
+              setPlaying={setPlaying} setFireTime={setFireTime}
+              wind={wind} smoke={smoke}
+            />
           </div>
 
-          {/* Tab content */}
-          {tab === TAB.results && (
-            <>
-              <ResultsTable result={activeResult} onSelectPath={setSelectedPath} />
-              <IncidentPanel
-                buildingId={Number(buildingId)}
-                nodes={nodes}
-                preselectedNode={clickedNode}
-                onIncidentChange={handleIncidentChange}
-              />
-            </>
-          )}
-
-          {tab === TAB.analysis && (
-            <AnalysisPanel
-              buildingId={Number(buildingId)}
-              nodes={nodes}
-              fireLocation={fireNode || (nodes[0]?.node_key) || ''}
-              onHighlightBottlenecks={setBottleneckEdges}
-              onShowMaxflowBadges={setMaxflowBadges}
-            />
-          )}
+          <ResultsPanel
+            tab={tab} setTab={setTab}
+            routes={activeRoutes} compareRoutes={compareAstar}
+            algorithm={algorithm}
+            selectedRoute={selectedRoute} setSelectedRoute={setSelectedRoute}
+            safety={safety}
+            bottlenecks={bottlenecks}
+            showBottleneck={showBottleneck} setShowBottleneck={setShowBottleneck}
+            maxflowBadges={maxflowBadges}
+            analysisOpen={analysisOpen} setAnalysisOpen={setAnalysisOpen}
+            stats={{ totalEvac, avgEvac, unreachable, slowest }}
+            clickedNode={clickedNode}
+            incidents={incidents}
+          />
         </div>
       </div>
     </div>

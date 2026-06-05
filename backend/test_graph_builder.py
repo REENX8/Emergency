@@ -14,8 +14,6 @@ from graph_builder import (
     remove_node_safe,
     WALK_SPEED_MS,
     STAIR_SPEED_MS,
-    REFERENCE_WIDTH,
-    MAX_CROWD_SLOWDOWN,
 )
 
 
@@ -25,37 +23,37 @@ from graph_builder import (
 
 class TestCalculateEdgeWeight:
     def test_empty_corridor_no_crowd(self):
-        # weight = (dist/speed) * (ref_width/width) * 1.0
-        w = calculate_edge_weight(distance=10.0, width=3.0, crowd_density=0.0)
-        expected = (10.0 / WALK_SPEED_MS) * (REFERENCE_WIDTH / 3.0)
+        # w = d / (v_base × 1 × 1)
+        w = calculate_edge_weight(distance=10.0, crowd_density=0.0)
+        expected = 10.0 / WALK_SPEED_MS
         assert math.isclose(w, expected)
 
-    def test_narrow_corridor_higher_weight(self):
-        w_wide   = calculate_edge_weight(10.0, 3.0, 0.0)
-        w_narrow = calculate_edge_weight(10.0, 1.0, 0.0)
-        assert w_narrow > w_wide
+    def test_higher_risk_increases_weight(self):
+        w_no_risk   = calculate_edge_weight(10.0, 0.0, risk=0.0)
+        w_some_risk = calculate_edge_weight(10.0, 0.0, risk=0.5)
+        assert w_some_risk > w_no_risk
 
-    def test_full_crowd_max_slowdown(self):
-        w_empty = calculate_edge_weight(10.0, 3.0, 0.0)
-        w_full  = calculate_edge_weight(10.0, 3.0, 1.0)
-        assert math.isclose(w_full, w_empty * MAX_CROWD_SLOWDOWN)
+    def test_high_risk_returns_infinity(self):
+        # R >= 0.9 → impassable
+        assert calculate_edge_weight(10.0, 0.0, risk=0.9) == float("inf")
+        assert calculate_edge_weight(10.0, 0.0, risk=1.0) == float("inf")
 
     def test_stair_uses_slower_speed(self):
-        w_flat  = calculate_edge_weight(10.0, 1.5, 0.0, is_stair=False)
-        w_stair = calculate_edge_weight(10.0, 1.5, 0.0, is_stair=True)
+        w_flat  = calculate_edge_weight(10.0, 0.0, risk=0.0, is_stair=False)
+        w_stair = calculate_edge_weight(10.0, 0.0, risk=0.0, is_stair=True)
         assert w_stair > w_flat
 
-    def test_minimum_width_clamp(self):
-        # width=0 would cause division by zero; should clamp to 0.5
-        w = calculate_edge_weight(10.0, 0.0, 0.0)
-        expected = (10.0 / WALK_SPEED_MS) * (REFERENCE_WIDTH / 0.5)
+    def test_exact_formula_at_half_crowd(self):
+        # w = d / (v_base × (1−0.5) × (1−0)) = d / (v_base × 0.5)
+        w = calculate_edge_weight(10.0, 0.5)
+        expected = 10.0 / (WALK_SPEED_MS * 0.5)
         assert math.isclose(w, expected)
 
-    def test_partial_crowd(self):
-        w_empty   = calculate_edge_weight(10.0, 3.0, 0.0)
-        w_half    = calculate_edge_weight(10.0, 3.0, 0.5)
-        w_full    = calculate_edge_weight(10.0, 3.0, 1.0)
-        assert w_empty < w_half < w_full
+    def test_partial_crowd_monotone(self):
+        w_empty = calculate_edge_weight(10.0, 0.0)
+        w_half  = calculate_edge_weight(10.0, 0.5)
+        w_high  = calculate_edge_weight(10.0, 0.9)
+        assert w_empty < w_half < w_high
 
 
 # ---------------------------------------------------------------------------
