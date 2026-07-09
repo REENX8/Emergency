@@ -12,7 +12,10 @@ STEPS_PER_HALF_FLOOR = 9
 TOTAL_FLOORS = 4
 EXITS = 2
 
-WALKING_SPEED_MS = 1.2
+# Same speeds as the simulation engine (backend/graph_builder.py) so this
+# standalone analysis and the API agree. The report (evacuation_report_final
+# .pdf) allows 1.2-1.5 m/s for level walking; we use 1.4 throughout.
+WALKING_SPEED_MS = 1.4
 STAIR_SPEED_MS = 0.6
 STEP_HEIGHT_CM = 18
 

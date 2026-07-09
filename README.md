@@ -53,7 +53,7 @@ w(e) = d / (v_base × (1 − ρ(e)) × (1 − R(e)))
 | ตัวแปร | ความหมาย |
 |---|---|
 | `d` | ความยาวเส้นทาง (เมตร) |
-| `v_base` | 1.4 m/s (ทางเดิน), 0.6 m/s (บันได) |
+| `v_base` | 1.4 m/s (ทางเดิน — อยู่ในช่วง 1.2–1.5 ตามรายงาน), 0.6 m/s (บันได) |
 | `ρ(e)` | crowd density ∈ [0, 1) |
 | `R(e)` | smoke/risk level ∈ [0, 1] |
 
@@ -146,11 +146,22 @@ Algorithm: Dijkstra จาก fire source — minimize cumulative `t_spread`
 | `POST` | `/buildings/{id}/evacuate/compare` | เปรียบ Dijkstra vs A* พร้อม smoke |
 | `POST` | `/buildings/{id}/fire/spread` | คำนวณเวลาไฟลามถึงแต่ละ node |
 | `POST` | `/buildings/{id}/smoke/propagate` | คำนวณ smoke level ทุก edge |
-| `POST` | `/buildings/{id}/nodes` | เพิ่ม node |
-| `POST` | `/buildings/{id}/edges` | เพิ่ม edge |
-| `GET` | `/buildings/{id}/graph` | ดู graph สำหรับ Cytoscape.js |
-| `GET` | `/buildings/{id}/analysis` | safety score + bottleneck + max-flow |
-| `POST` | `/buildings/{id}/incidents` | รายงานเหตุการณ์ (fire/smoke/crowd) |
+| `PATCH` | `/buildings/{id}` | แก้ไข building (name, total_floors, has_sprinkler, …) |
+| `GET/POST` | `/buildings/{id}/nodes` | ดู/เพิ่ม node |
+| `PUT/DELETE` | `/buildings/{id}/nodes/{key}` | แก้ไข/ลบ node |
+| `GET/POST` | `/buildings/{id}/edges` | ดู/เพิ่ม edge |
+| `DELETE` | `/buildings/{id}/edges/{id}` | ลบ edge |
+| `GET` | `/buildings/{id}/graph` | ดู graph สำหรับ frontend |
+| `POST` | `/buildings/{id}/floors` | อัปโหลดภาพ floor plan (≤ 10 MB) |
+| `GET` | `/buildings/{id}/analysis/safety` | safety score + grade |
+| `POST` | `/buildings/{id}/analysis/bottleneck` | หา bottleneck edges |
+| `POST` | `/buildings/{id}/analysis/connectivity` | ตรวจ connectivity เมื่อ block edges |
+| `POST` | `/buildings/{id}/evacuate/maxflow` | กระจายคนตาม max-flow |
+| `GET` | `/buildings/{id}/compliance` | ตรวจกฎกระทรวง (Phase 2) |
+| `GET` | `/buildings/{id}/experiments/run` | experiment สำเร็จรูป (json/csv) |
+| `POST` | `/buildings/{id}/experiments/sweep` | sensitivity sweep (Phase 4) |
+| `GET/POST` | `/buildings/{id}/incidents` | ดู/รายงานเหตุการณ์ (fire/smoke/crowd) |
+| `PATCH` | `/buildings/{id}/incidents/{iid}` | ปิดเหตุการณ์ (resolve) |
 
 ### Meta
 
@@ -217,7 +228,7 @@ Rules engine at `backend/compliance.py` ตรวจ 6 ข้อจากกฎ�
 |---|---|---|
 | `stair_width` | บันไดหนีไฟ ≥ 1.50 m | fail |
 | `corridor_width` | ทางเดินอพยพ ≥ 1.50 m | warn |
-| `exit_count` | อาคาร 2 ชั้นขึ้นไป ≥ 2 exit/ชั้น | fail |
+| `exit_count` | อาคาร 2 ชั้นขึ้นไป ≥ 2 ทางหนีไฟ/ชั้น (exit + บันไดหนีไฟ) | fail |
 | `travel_distance` | ห้อง → exit ใกล้สุด ≤ 60 m (sprinkler) / 30 m | fail |
 | `dead_end` | ทางตัน ≤ 10 m | warn |
 | `occupancy` | capacity ≤ พื้นที่ ÷ (9 m²/คน office) | warn |
@@ -235,7 +246,10 @@ WebSocket endpoint: `WS /buildings/{id}/ws?token=<JWT?>`
 Event types: `incident.created`, `incident.resolved`, `node.created/updated/deleted`, `edge.created/deleted`
 Shape: `{type, payload, actor: {id,email,role}|null, ts}`
 
-Frontend hook: `useBuildingEvents(buildingId, onEvent)` ใน `frontend/src/api/realtime.ts` และ `user-app/src/hooks/useBuildingEvents.ts` — auto-reconnect exponential backoff capped 30s
+Frontend hook: `useBuildingEvents(buildingId, onEvent)` ใน `frontend/src/api/realtime.ts`
+(ใช้ใน `SimulationPage` — refresh incidents ทันทีเมื่อมีรายงานใหม่) และ
+`user-app/src/hooks/useBuildingEvents.ts` — auto-reconnect exponential backoff capped 30s
+nginx ของทั้ง 2 แอป proxy WebSocket upgrade ผ่าน `/api/` แล้ว (`proxy_set_header Upgrade/Connection`)
 
 Single-instance only. Multi-instance deploy ต้องการ Redis pub/sub (สร้างใน backend/realtime.py เอาภายหลัง)
 
@@ -310,45 +324,69 @@ POST /buildings/{id}/evacuate
 ```
 Emergency/
 ├── evacuation_report_final.pdf   # รายงานทางคณิตศาสตร์ (แหล่งที่มาสูตร)
-├── render.yaml                   # Render deployment config
+├── layout_calculator.py          # วิเคราะห์อาคารจริง 4 ชั้น (standalone — ดูหัวข้อถัดไป)
+├── layout_data.{json,csv}        # ข้อมูล digitize จากแปลนวาดมือ
+├── layout_visualization.html     # ภาพแปลนแบบ interactive
+├── render.yaml                   # Render deployment (backend + 2 static sites + Postgres)
+├── docker-compose.yml            # backend :8000 + console :3000 + user-app :3001
+├── pyproject.toml                # ruff / mypy / pytest / coverage config
+├── .github/workflows/            # backend.yml (lint+test+audit), frontend.yml (2 แอป)
 │
 ├── backend/
-│   ├── main.py                   # FastAPI app + legacy endpoints
+│   ├── main.py                   # FastAPI app + middleware + WebSocket endpoint
 │   ├── database.py               # SQLAlchemy setup (SQLite / PostgreSQL)
-│   ├── models.py                 # ORM: Building, Floor, Node, Edge, Incident
+│   ├── models.py                 # ORM: Building, Floor, Node, Edge, Incident, User, AuditLog
 │   ├── schemas.py                # Pydantic request/response schemas
-│   ├── graph_builder.py          # Building graph + weight formula
-│   ├── dynamic_graph.py          # DB → NetworkX graph builder
+│   ├── auth.py                   # JWT + bcrypt + role dependency (RBAC)
+│   ├── audit.py                  # Append-only audit log
+│   ├── rate_limit.py             # SlowAPI limiter
+│   ├── realtime.py               # In-memory WebSocket broadcast (per building)
+│   ├── graph_builder.py          # Weight formula + reference 21-node building
+│   ├── dynamic_graph.py          # DB → NetworkX graph builder (+ cache)
 │   ├── pathfinding.py            # Dijkstra + A* implementations
 │   ├── fire_spread.py            # Physics-based fire spread (Dijkstra)
 │   ├── smoke_propagation.py      # Continuous smoke level model
 │   ├── analysis.py               # Safety score, bottleneck, max-flow
+│   ├── compliance.py             # กฎกระทรวง rules engine (Phase 2)
+│   ├── experiments/              # Sweep runner + scenarios + metrics (Phase 4)
+│   ├── validation/               # Golden test cases (hand-computed)
 │   ├── weather.py                # TMD API integration
 │   ├── storage.py                # File upload (local / Supabase)
-│   ├── seed_demo.py              # Demo data seeder
-│   ├── routers/
-│   │   ├── buildings.py          # Building CRUD + simulation endpoints
-│   │   ├── incidents.py          # Incident reporting
-│   │   └── analysis.py           # Analysis endpoints
-│   ├── test_graph_builder.py
-│   ├── test_pathfinding.py
-│   ├── test_smoke_propagation.py
-│   ├── test_analysis.py
-│   ├── test_fire_spread.py
+│   ├── seed_demo.py              # Demo data seeder (3-floor building)
+│   ├── alembic/versions/         # Migrations 0001–0005
+│   ├── test_*.py                 # 259+ tests
 │   └── requirements.txt
 │
-└── frontend/
-    ├── package.json
-    ├── .env                      # REACT_APP_API_URL
+├── frontend/                     # Operator console (CRA + React 18)
+│   └── src/
+│       ├── pages/                # Login, Register, BuildingManager, FloorEditor,
+│       │                         # SimulationPage, CompliancePage, ExperimentsPage
+│       ├── js/                   # FloorPlan (SVG), Panels, TopBar, sim
+│       ├── components/           # RequireAuth, ConfirmModal, Toast
+│       └── api/                  # client.ts (axios+JWT), realtime.ts (WebSocket)
+│
+└── user-app/                     # Mobile evacuee PWA (Vite + TS, offline-ready, i18n)
     └── src/
-        ├── App.jsx
-        └── components/
-            ├── BuildingMap.jsx   # Cytoscape.js interactive floor plan
-            ├── ControlPanel.jsx  # Fire/crowd/wind controls
-            ├── IncidentPanel.jsx # Incident reporting UI
-            ├── AnalysisPanel.jsx # Safety score + bottleneck display
-            └── ResultsTable.jsx  # Routes + comparison table
+        ├── routes/               # BuildingList, FloorPicker, FloorMap
+        ├── components/           # FloorPlanCanvas, RouteOverlay, ReportSheet, …
+        ├── hooks/                # useUserRoute, useBuildingEvents (WebSocket)
+        └── api/                  # client.ts
 ```
+
+---
+
+## Standalone Deliverable — วิเคราะห์อาคารจริง (layout_*)
+
+ไฟล์ `layout_*` ที่ root คือชุดวิเคราะห์ **อาคารทางเดินกลาง 4 ชั้น 28 ห้อง**
+(digitize จากแปลนวาดมือ: ห้องกว้าง 9.14 m, ทางเดินยาว 64 m กว้าง 1.9 m,
+บันได 2 ข้างกว้าง 1.6 m เป็นทางออกเดียว) — แยกจากระบบหลัก ใช้ค่าความเร็วเดียวกัน
+(1.4 m/s ทางเดิน / 0.6 m/s บันได)
+
+```bash
+python layout_calculator.py   # ตารางระยะ/เวลาอพยพต่อห้อง + bottleneck + worst case
+```
+
+รายละเอียดการแปลคำอธิบายภาษาไทยในแปลน: `layout_plan_translation.md`
 
 ---
 
@@ -356,13 +394,17 @@ Emergency/
 
 ```bash
 docker compose up --build
-# Frontend:  http://localhost:3000
-# Backend:   http://localhost:8000   (Swagger UI: /docs)
+# Operator console:  http://localhost:3000
+# Mobile user-app:   http://localhost:3001
+# Backend:           http://localhost:8000   (Swagger UI: /docs)
+
+# seed อาคาร demo 3 ชั้น (ครั้งแรก)
+python backend/seed_demo.py
 ```
 
-Frontend container เป็น nginx + บิ้วล์ของ React มาเสร็จแล้ว, proxy `/api/*`
-ไปที่ backend container ผ่าน Docker network — เปิดเบราว์เซอร์แล้วใช้งานได้
-เลย ไม่ต้องตั้ง `REACT_APP_API_URL`
+ทั้ง 2 frontend container เป็น nginx + บิ้วล์เสร็จแล้ว, proxy `/api/*` (รวม WebSocket)
+ไปที่ backend container ผ่าน Docker network — เปิดเบราว์เซอร์แล้วใช้งานได้เลย
+ไม่ต้องตั้ง `REACT_APP_API_URL`/`VITE_API_URL`
 
 ตั้งค่า env ภายนอก (เช่นใช้ Supabase แทน SQLite):
 
@@ -396,8 +438,12 @@ npm start
 cd backend
 pip install pytest
 RATE_LIMIT_ENABLED=0 pytest -v
-# 201 passed (พื้นฐาน 114 + auth/RBAC + compliance + realtime + experiments + validation)
+# 259+ passed (pathfinding, fire/smoke, analysis, auth/RBAC, compliance,
+#              realtime, experiments, validation, storage, weather, audit)
 ```
+
+Lint/format ด้วย `ruff check backend/` และ `ruff format --check backend/`
+(config อยู่ที่ `pyproject.toml`) — CI มี coverage gate ≥ 70%
 
 Rate-limit tests run their own fresh modules so set `RATE_LIMIT_ENABLED=0`
 globally — the dedicated `test_rate_limit.py` re-enables it per test.
@@ -417,6 +463,8 @@ globally — the dedicated `test_rate_limit.py` re-enables it per test.
    - `DATABASE_URL` — Supabase pooler URL (หรือเว้นว่างใช้ SQLite สำหรับทดสอบ)
    - `ALLOWED_ORIGINS` — เช่น `https://evacuation-frontend.onrender.com`
    - `JWT_SECRET` — random 32+ chars (ใช้กับ auth)
+   - `ENV=production` — บังคับให้แอป refuse to start ถ้าลืมตั้ง `JWT_SECRET`
+     (ใช้ `render.yaml` ที่ root จะตั้งค่าเหล่านี้ให้อัตโนมัติ)
 4. รอ build เสร็จ → copy URL
 
 ### 2. Deploy Frontend (Static Site)
@@ -455,5 +503,5 @@ curl -X POST http://localhost:8000/buildings/1/evacuate \
   }' | jq '.primary_routes[0]'
 
 # ดู safety score
-curl http://localhost:8000/buildings/1/analysis | jq '.safety_score'
+curl http://localhost:8000/buildings/1/analysis/safety | jq '.safety_score'
 ```
