@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { http } from '../api/client';
+import { useBuildingEvents } from '../api/realtime';
 import FloorPlan from '../js/FloorPlan';
 import { ControlPanel, ResultsPanel, StatusStrip } from '../js/Panels';
 import { SimTopBar, Legend } from '../js/TopBar';
@@ -122,6 +123,15 @@ export default function SimulationPage() {
       setLoading(false);
     });
   }, [buildingId]);
+
+  /* ── Realtime: refresh incidents when the building's WebSocket
+        stream reports a change (e.g. a mobile user reports fire) ──── */
+  useBuildingEvents(buildingId, (evt) => {
+    if (!evt?.type?.startsWith('incident.')) return;
+    http.get(`/buildings/${buildingId}/incidents`, { params: { limit: 200 } })
+      .then((iRes) => setIncidents(iRes.data?.items ?? iRes.data ?? []))
+      .catch(() => { /* polling backstop still applies */ });
+  });
 
   /* ── Derived data ────────────────────────────────────────────── */
   const wind = useWeather && weather

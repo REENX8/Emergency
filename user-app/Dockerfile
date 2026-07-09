@@ -8,8 +8,8 @@ WORKDIR /app
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=${VITE_API_URL}
 
-COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build

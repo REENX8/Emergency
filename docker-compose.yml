@@ -4,13 +4,16 @@ services:
     container_name: evacuation-backend
     restart: unless-stopped
     environment:
-      # Leave DATABASE_URL unset to use the bundled SQLite file inside the
-      # container; set it to a Supabase / Postgres URL for production-like
+      # SQLite lives on the data volume so it survives restarts; override
+      # DATABASE_URL with a Supabase / Postgres URL for production-like
       # behaviour. The CRA dev server isn't talking to this container.
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/data/evacuation.db}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:3001,http://localhost:5173}
     volumes:
-      # Persist the SQLite file + uploaded floor plans across restarts.
-      - backend-data:/app
+      # Persist only data (SQLite + uploaded floor plans) — mounting the
+      # whole /app would shadow freshly built code with the old volume copy.
+      - backend-data:/app/data
+      - backend-uploads:/app/uploads
     expose:
       - "8000"
     ports:
@@ -44,3 +47,4 @@ services:
 
 volumes:
   backend-data:
+  backend-uploads:

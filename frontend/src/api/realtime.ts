@@ -19,7 +19,11 @@ export interface BuildingEvent {
 }
 
 function wsUrlFor(buildingId: number | string): string {
-  const base = API_URL.replace(/^http/, 'ws');
+  // API_URL might be '/api' (relative, production nginx) or 'http(s)://...'
+  // (dev) — a relative base needs the scheme/host derived from the page.
+  const base = API_URL.startsWith('http')
+    ? API_URL.replace(/^http/, 'ws')
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}${API_URL}`;
   const tok = getToken();
   const qs = tok ? `?token=${encodeURIComponent(tok)}` : '';
   return `${base}/buildings/${buildingId}/ws${qs}`;
