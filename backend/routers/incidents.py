@@ -1,12 +1,10 @@
 """routers/incidents.py — Report and resolve incidents (fire / smoke / crowd)."""
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from audit import audit
-from auth import get_current_user, require_role
+from auth import require_role
 from database import get_db
 from dynamic_graph import invalidate_graph_cache
 from models import Building, Incident, Node, User
@@ -36,25 +34,47 @@ def report_incident(
         raise HTTPException(400, detail=f"incident_type must be one of {sorted(VALID_TYPES)}")
 
     # Validate node exists in this building
-    node = db.query(Node).filter(
-        Node.building_id == building_id,
-        Node.node_key == payload.node_key,
-    ).first()
+    node = (
+        db.query(Node)
+        .filter(
+            Node.building_id == building_id,
+            Node.node_key == payload.node_key,
+        )
+        .first()
+    )
     if not node:
-        raise HTTPException(400, detail=f"Node '{payload.node_key}' not found in building {building_id}")
+        raise HTTPException(
+            400, detail=f"Node '{payload.node_key}' not found in building {building_id}"
+        )
 
     incident = Incident(building_id=building_id, **payload.model_dump())
     db.add(incident)
     db.commit()
     db.refresh(incident)
     invalidate_graph_cache(building_id)
-    audit(db, None, "incident.create", target_type="incident", target_id=incident.id,
-          payload={"building_id": building_id, "type": payload.incident_type,
-                   "node_key": payload.node_key, "severity": payload.severity})
-    broadcast_sync(building_id, "incident.created", {
-        "id": incident.id, "node_key": incident.node_key,
-        "incident_type": incident.incident_type, "severity": incident.severity,
-    })
+    audit(
+        db,
+        None,
+        "incident.create",
+        target_type="incident",
+        target_id=incident.id,
+        payload={
+            "building_id": building_id,
+            "type": payload.incident_type,
+            "node_key": payload.node_key,
+            "severity": payload.severity,
+        },
+    )
+    broadcast_sync(
+        building_id,
+        "incident.created",
+        {
+            "id": incident.id,
+            "node_key": incident.node_key,
+            "incident_type": incident.incident_type,
+            "severity": incident.severity,
+        },
+    )
     return incident
 
 
@@ -62,7 +82,7 @@ def report_incident(
 def list_incidents(
     building_id: int,
     active_only: bool = True,
-    limit:  int = Query(default=100, ge=1, le=500),
+    limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
@@ -84,10 +104,14 @@ def resolve_incident(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role("operator")),
 ):
-    incident = db.query(Incident).filter(
-        Incident.id == incident_id,
-        Incident.building_id == building_id,
-    ).first()
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.id == incident_id,
+            Incident.building_id == building_id,
+        )
+        .first()
+    )
     if not incident:
         raise HTTPException(404, detail="Incident not found")
 
@@ -95,11 +119,26 @@ def resolve_incident(
     db.commit()
     db.refresh(incident)
     invalidate_graph_cache(building_id)
-    audit(db, actor, "incident.resolve", target_type="incident", target_id=incident_id,
-          payload={"building_id": building_id, "node_key": incident.node_key,
-                   "type": incident.incident_type})
-    broadcast_sync(building_id, "incident.resolved", {
-        "id": incident.id, "node_key": incident.node_key,
-        "incident_type": incident.incident_type,
-    }, actor=actor)
+    audit(
+        db,
+        actor,
+        "incident.resolve",
+        target_type="incident",
+        target_id=incident_id,
+        payload={
+            "building_id": building_id,
+            "node_key": incident.node_key,
+            "type": incident.incident_type,
+        },
+    )
+    broadcast_sync(
+        building_id,
+        "incident.resolved",
+        {
+            "id": incident.id,
+            "node_key": incident.node_key,
+            "incident_type": incident.incident_type,
+        },
+        actor=actor,
+    )
     return incident

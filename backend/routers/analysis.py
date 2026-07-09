@@ -18,7 +18,8 @@ from analysis import (
     find_bottlenecks,
     run_experiments,
 )
-from compliance import BuildingMeta, evaluate as evaluate_compliance
+from compliance import BuildingMeta
+from compliance import evaluate as evaluate_compliance
 from database import get_db
 from dynamic_graph import build_graph_from_db, get_exits_from_db
 from experiments import SweepRequest, run_sweep
@@ -38,8 +39,9 @@ def _get_building_or_404(building_id: int, db: Session) -> Building:
 # Connectivity
 # ---------------------------------------------------------------------------
 
+
 class ConnectivityRequest(BaseModel):
-    blocked_edges: list[list[str]] = []   # [[u, v], ...]
+    blocked_edges: list[list[str]] = []  # [[u, v], ...]
 
 
 @router.post("/{building_id}/analysis/connectivity")
@@ -58,6 +60,7 @@ def connectivity_check(
 # Bottleneck
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{building_id}/analysis/bottleneck")
 def bottleneck_analysis(
     building_id: int,
@@ -71,6 +74,7 @@ def bottleneck_analysis(
 # ---------------------------------------------------------------------------
 # Safety score
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{building_id}/analysis/safety")
 def safety_score(
@@ -86,6 +90,7 @@ def safety_score(
 # Max-flow distribution
 # ---------------------------------------------------------------------------
 
+
 class MaxflowRequest(BaseModel):
     occupied_rooms: list[str] = []
 
@@ -97,7 +102,7 @@ def maxflow_distribution(
     db: Session = Depends(get_db),
 ):
     _get_building_or_404(building_id, db)
-    G     = build_graph_from_db(building_id, db)
+    G = build_graph_from_db(building_id, db)
     exits = get_exits_from_db(building_id, db)
 
     if not exits:
@@ -110,6 +115,7 @@ def maxflow_distribution(
 # ---------------------------------------------------------------------------
 # Thai building code compliance
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{building_id}/compliance")
 def building_compliance(
@@ -125,9 +131,9 @@ def building_compliance(
     b = _get_building_or_404(building_id, db)
     G = build_graph_from_db(building_id, db)
     meta = BuildingMeta(
-        has_sprinkler = bool(b.has_sprinkler),
-        building_type = b.building_type or "office",
-        total_floors  = int(b.total_floors or 1),
+        has_sprinkler=bool(b.has_sprinkler),
+        building_type=b.building_type or "office",
+        total_floors=int(b.total_floors or 1),
     )
     return evaluate_compliance(G, meta)
 
@@ -135,6 +141,7 @@ def building_compliance(
 # ---------------------------------------------------------------------------
 # Experiment runner + CSV export
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{building_id}/experiments/run")
 def run_building_experiments(
@@ -144,13 +151,11 @@ def run_building_experiments(
     db: Session = Depends(get_db),
 ):
     _get_building_or_404(building_id, db)
-    G     = build_graph_from_db(building_id, db)
+    G = build_graph_from_db(building_id, db)
     exits = get_exits_from_db(building_id, db)
 
     if fire_location not in G:
-        raise HTTPException(
-            400, detail=f"fire_location '{fire_location}' not in building graph"
-        )
+        raise HTTPException(400, detail=f"fire_location '{fire_location}' not in building graph")
     if not exits:
         raise HTTPException(400, detail="No exits defined in this building")
 
@@ -161,8 +166,7 @@ def run_building_experiments(
             content=data["csv"],
             media_type="text/csv",
             headers={
-                "Content-Disposition":
-                    f'attachment; filename="experiments_b{building_id}.csv"'
+                "Content-Disposition": f'attachment; filename="experiments_b{building_id}.csv"'
             },
         )
 
@@ -172,6 +176,7 @@ def run_building_experiments(
 # ---------------------------------------------------------------------------
 # Sensitivity sweep (Phase 4)
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{building_id}/experiments/sweep")
 def run_sweep_endpoint(
@@ -187,7 +192,7 @@ def run_sweep_endpoint(
     ≤ 50 repeats). For larger sweeps move to a background queue.
     """
     _get_building_or_404(building_id, db)
-    G     = build_graph_from_db(building_id, db)
+    G = build_graph_from_db(building_id, db)
     exits = get_exits_from_db(building_id, db)
 
     if not exits:
@@ -202,15 +207,14 @@ def run_sweep_endpoint(
     try:
         result = run_sweep(G, exits, req)
     except ValueError as exc:
-        raise HTTPException(400, detail=str(exc))
+        raise HTTPException(400, detail=str(exc)) from exc
 
     if format == "csv":
         return Response(
             content=result.csv,
             media_type="text/csv",
             headers={
-                "Content-Disposition":
-                    f'attachment; filename="sweep_b{building_id}_{req.variable}.csv"'
+                "Content-Disposition": f'attachment; filename="sweep_b{building_id}_{req.variable}.csv"'
             },
         )
     return result.to_dict()

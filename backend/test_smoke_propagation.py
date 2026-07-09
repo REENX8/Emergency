@@ -3,17 +3,16 @@ test_smoke_propagation.py — Tests for the continuous smoke level model
 """
 
 import math
-import networkx as nx
-import pytest
 
+import networkx as nx
+
+from graph_builder import WALK_SPEED_MS, calculate_edge_weight
 from smoke_propagation import (
     BLOCK_THR,
-    LAMBDA,
-    compute_smoke_levels,
     apply_smoke_levels,
+    compute_smoke_levels,
     smoke_levels_to_cytoscape,
 )
-from graph_builder import calculate_edge_weight, WALK_SPEED_MS
 
 
 def make_linear_graph() -> nx.Graph:
@@ -23,15 +22,31 @@ def make_linear_graph() -> nx.Graph:
     base_time = d / v_base (zero crowd, zero risk)
     """
     G = nx.Graph()
-    G.add_node("FIRE", x=0,   y=0,  type="room",     capacity=10)
-    G.add_node("MID",  x=60,  y=0,  type="corridor", capacity=20)
-    G.add_node("FAR",  x=120, y=0,  type="exit",     capacity=50)
+    G.add_node("FIRE", x=0, y=0, type="room", capacity=10)
+    G.add_node("MID", x=60, y=0, type="corridor", capacity=20)
+    G.add_node("FAR", x=120, y=0, type="exit", capacity=50)
     bt1 = 10.0 / WALK_SPEED_MS
     bt2 = 15.0 / WALK_SPEED_MS
-    G.add_edge("FIRE", "MID", weight=bt1, base_time=bt1, distance=10.0,
-               width=2.0, crowd_density=0.0, is_stair=False)
-    G.add_edge("MID",  "FAR", weight=bt2, base_time=bt2, distance=15.0,
-               width=2.0, crowd_density=0.0, is_stair=False)
+    G.add_edge(
+        "FIRE",
+        "MID",
+        weight=bt1,
+        base_time=bt1,
+        distance=10.0,
+        width=2.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
+    G.add_edge(
+        "MID",
+        "FAR",
+        weight=bt2,
+        base_time=bt2,
+        distance=15.0,
+        width=2.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
     return G
 
 
@@ -45,14 +60,23 @@ def make_cross_graph() -> nx.Graph:
     for n, (x, y) in pos.items():
         G.add_node(n, x=x, y=y, type="exit" if n != "FIRE" else "room", capacity=20)
     for n in ("N", "S", "E", "W"):
-        G.add_edge("FIRE", n, weight=10.0, base_time=10.0, distance=10.0,
-                   width=2.0, crowd_density=0.0, is_stair=False)
+        G.add_edge(
+            "FIRE",
+            n,
+            weight=10.0,
+            base_time=10.0,
+            distance=10.0,
+            width=2.0,
+            crowd_density=0.0,
+            is_stair=False,
+        )
     return G
 
 
 # ---------------------------------------------------------------------------
 # compute_smoke_levels
 # ---------------------------------------------------------------------------
+
 
 class TestComputeSmokeLevels:
     def test_returns_one_entry_per_edge(self):
@@ -64,7 +88,7 @@ class TestComputeSmokeLevels:
         G = make_linear_graph()
         levels = compute_smoke_levels("FIRE", G, wind_direction_deg=0, wind_speed_ms=0)
         s_near = levels[("FIRE", "MID")]
-        s_far  = levels[("MID", "FAR")]
+        s_far = levels[("MID", "FAR")]
         assert s_near > s_far, "Edge closer to fire should have higher smoke"
 
     def test_smoke_decreases_with_distance(self):
@@ -106,7 +130,7 @@ class TestComputeSmokeLevels:
         levels_calm = compute_smoke_levels("FIRE", G, wind_direction_deg=90, wind_speed_ms=0)
         levels_windy = compute_smoke_levels("FIRE", G, wind_direction_deg=90, wind_speed_ms=10)
         # Downwind edge: windy should have higher smoke on the far edge
-        s_calm_far  = levels_calm[("MID", "FAR")]
+        s_calm_far = levels_calm[("MID", "FAR")]
         s_windy_far = levels_windy[("MID", "FAR")]
         assert s_windy_far >= s_calm_far
 
@@ -114,6 +138,7 @@ class TestComputeSmokeLevels:
 # ---------------------------------------------------------------------------
 # apply_smoke_levels
 # ---------------------------------------------------------------------------
+
 
 class TestApplySmokeLevels:
     def test_high_smoke_sets_weight_inf(self):
@@ -131,7 +156,9 @@ class TestApplySmokeLevels:
         apply_smoke_levels(G, smoke)
         e = G["FIRE"]["MID"]
         # w = d / (v_base × (1 − ρ) × (1 − s))
-        expected = calculate_edge_weight(e["distance"], e["crowd_density"], s, e.get("is_stair", False))
+        expected = calculate_edge_weight(
+            e["distance"], e["crowd_density"], s, e.get("is_stair", False)
+        )
         assert math.isclose(e["weight"], expected, rel_tol=1e-6)
 
     def test_zero_smoke_preserves_base_time(self):
@@ -151,12 +178,13 @@ class TestApplySmokeLevels:
         G = make_linear_graph()
         # Edge FIRE→FAR does not exist
         smoke = {("FIRE", "FAR"): 0.5}
-        apply_smoke_levels(G, smoke)   # should not raise
+        apply_smoke_levels(G, smoke)  # should not raise
 
 
 # ---------------------------------------------------------------------------
 # smoke_levels_to_cytoscape
 # ---------------------------------------------------------------------------
+
 
 class TestSmokeLevelsToCytoscape:
     def test_output_length_matches_input(self):

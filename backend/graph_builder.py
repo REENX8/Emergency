@@ -11,11 +11,9 @@ If R(e) ≥ 0.9 the edge is impassable (weight = ∞).
 """
 
 import networkx as nx
-from typing import Dict, Tuple
 
-
-WALK_SPEED_MS  = 1.4   # m/s (normal walking)
-STAIR_SPEED_MS = 0.6   # m/s (descending stairs under stress)
+WALK_SPEED_MS = 1.4  # m/s (normal walking)
+STAIR_SPEED_MS = 0.6  # m/s (descending stairs under stress)
 
 
 def calculate_edge_weight(
@@ -47,7 +45,7 @@ def calculate_edge_weight(
     return distance / denominator
 
 
-def build_evacuation_graph(crowd_densities: Dict[str, float] | None = None) -> nx.Graph:
+def build_evacuation_graph(crowd_densities: dict[str, float] | None = None) -> nx.Graph:
     """
     Build a 3-floor office building as a weighted undirected graph (21 nodes).
 
@@ -78,68 +76,168 @@ def build_evacuation_graph(crowd_densities: Dict[str, float] | None = None) -> n
     # ------------------------------------------------------------------
     nodes = [
         # ── Floor 1 ────────────────────────────────────────────────────
-        ("r101",      {"type": "room",     "floor": 1, "x": 120, "y": 380, "label": "Room 101",    "capacity": 30}),
-        ("r102",      {"type": "room",     "floor": 1, "x": 240, "y": 380, "label": "Room 102",    "capacity": 25}),
-        ("r103",      {"type": "room",     "floor": 1, "x": 360, "y": 380, "label": "Room 103",    "capacity": 20}),
-        ("c1",        {"type": "corridor", "floor": 1, "x": 240, "y": 280, "label": "Corridor 1F", "capacity": 60}),
-        ("stair_a_f1",{"type": "stair",    "floor": 1, "x": 80,  "y": 280, "label": "Stair A·1F", "capacity": 20}),
-        ("stair_b_f1",{"type": "stair",    "floor": 1, "x": 400, "y": 280, "label": "Stair B·1F", "capacity": 20}),
-        ("exit1",     {"type": "exit",     "floor": 1, "x": 80,  "y": 160, "label": "Main Exit",   "capacity": 120}),
-        ("exit2",     {"type": "exit",     "floor": 1, "x": 400, "y": 160, "label": "South Exit",  "capacity": 80}),
-        ("exit3",     {"type": "exit",     "floor": 1, "x": 240, "y": 160, "label": "West Exit",   "capacity": 60}),
-
+        (
+            "r101",
+            {"type": "room", "floor": 1, "x": 120, "y": 380, "label": "Room 101", "capacity": 30},
+        ),
+        (
+            "r102",
+            {"type": "room", "floor": 1, "x": 240, "y": 380, "label": "Room 102", "capacity": 25},
+        ),
+        (
+            "r103",
+            {"type": "room", "floor": 1, "x": 360, "y": 380, "label": "Room 103", "capacity": 20},
+        ),
+        (
+            "c1",
+            {
+                "type": "corridor",
+                "floor": 1,
+                "x": 240,
+                "y": 280,
+                "label": "Corridor 1F",
+                "capacity": 60,
+            },
+        ),
+        (
+            "stair_a_f1",
+            {"type": "stair", "floor": 1, "x": 80, "y": 280, "label": "Stair A·1F", "capacity": 20},
+        ),
+        (
+            "stair_b_f1",
+            {
+                "type": "stair",
+                "floor": 1,
+                "x": 400,
+                "y": 280,
+                "label": "Stair B·1F",
+                "capacity": 20,
+            },
+        ),
+        (
+            "exit1",
+            {"type": "exit", "floor": 1, "x": 80, "y": 160, "label": "Main Exit", "capacity": 120},
+        ),
+        (
+            "exit2",
+            {"type": "exit", "floor": 1, "x": 400, "y": 160, "label": "South Exit", "capacity": 80},
+        ),
+        (
+            "exit3",
+            {"type": "exit", "floor": 1, "x": 240, "y": 160, "label": "West Exit", "capacity": 60},
+        ),
         # ── Floor 2 ────────────────────────────────────────────────────
-        ("r201",      {"type": "room",     "floor": 2, "x": 120, "y": 680, "label": "Room 201",    "capacity": 30}),
-        ("r202",      {"type": "room",     "floor": 2, "x": 240, "y": 680, "label": "Room 202",    "capacity": 25}),
-        ("r203",      {"type": "room",     "floor": 2, "x": 360, "y": 680, "label": "Room 203",    "capacity": 20}),
-        ("c2",        {"type": "corridor", "floor": 2, "x": 240, "y": 580, "label": "Corridor 2F", "capacity": 60}),
-        ("stair_a_f2",{"type": "stair",    "floor": 2, "x": 80,  "y": 580, "label": "Stair A·2F", "capacity": 20}),
-        ("stair_b_f2",{"type": "stair",    "floor": 2, "x": 400, "y": 580, "label": "Stair B·2F", "capacity": 20}),
-
+        (
+            "r201",
+            {"type": "room", "floor": 2, "x": 120, "y": 680, "label": "Room 201", "capacity": 30},
+        ),
+        (
+            "r202",
+            {"type": "room", "floor": 2, "x": 240, "y": 680, "label": "Room 202", "capacity": 25},
+        ),
+        (
+            "r203",
+            {"type": "room", "floor": 2, "x": 360, "y": 680, "label": "Room 203", "capacity": 20},
+        ),
+        (
+            "c2",
+            {
+                "type": "corridor",
+                "floor": 2,
+                "x": 240,
+                "y": 580,
+                "label": "Corridor 2F",
+                "capacity": 60,
+            },
+        ),
+        (
+            "stair_a_f2",
+            {"type": "stair", "floor": 2, "x": 80, "y": 580, "label": "Stair A·2F", "capacity": 20},
+        ),
+        (
+            "stair_b_f2",
+            {
+                "type": "stair",
+                "floor": 2,
+                "x": 400,
+                "y": 580,
+                "label": "Stair B·2F",
+                "capacity": 20,
+            },
+        ),
         # ── Floor 3 ────────────────────────────────────────────────────
-        ("r301",      {"type": "room",     "floor": 3, "x": 120, "y": 980, "label": "Room 301",    "capacity": 30}),
-        ("r302",      {"type": "room",     "floor": 3, "x": 240, "y": 980, "label": "Room 302",    "capacity": 25}),
-        ("r303",      {"type": "room",     "floor": 3, "x": 360, "y": 980, "label": "Room 303",    "capacity": 20}),
-        ("c3",        {"type": "corridor", "floor": 3, "x": 240, "y": 880, "label": "Corridor 3F", "capacity": 60}),
-        ("stair_a_f3",{"type": "stair",    "floor": 3, "x": 80,  "y": 880, "label": "Stair A·3F", "capacity": 20}),
-        ("stair_b_f3",{"type": "stair",    "floor": 3, "x": 400, "y": 880, "label": "Stair B·3F", "capacity": 20}),
+        (
+            "r301",
+            {"type": "room", "floor": 3, "x": 120, "y": 980, "label": "Room 301", "capacity": 30},
+        ),
+        (
+            "r302",
+            {"type": "room", "floor": 3, "x": 240, "y": 980, "label": "Room 302", "capacity": 25},
+        ),
+        (
+            "r303",
+            {"type": "room", "floor": 3, "x": 360, "y": 980, "label": "Room 303", "capacity": 20},
+        ),
+        (
+            "c3",
+            {
+                "type": "corridor",
+                "floor": 3,
+                "x": 240,
+                "y": 880,
+                "label": "Corridor 3F",
+                "capacity": 60,
+            },
+        ),
+        (
+            "stair_a_f3",
+            {"type": "stair", "floor": 3, "x": 80, "y": 880, "label": "Stair A·3F", "capacity": 20},
+        ),
+        (
+            "stair_b_f3",
+            {
+                "type": "stair",
+                "floor": 3,
+                "x": 400,
+                "y": 880,
+                "label": "Stair B·3F",
+                "capacity": 20,
+            },
+        ),
     ]
     G.add_nodes_from(nodes)
 
     # ------------------------------------------------------------------
     # EDGES  (u, v, distance_m, width_m, is_stair)
     # ------------------------------------------------------------------
-    edge_defs: list[Tuple] = [
+    edge_defs: list[tuple] = [
         # Floor 1 – horizontal
-        ("r101",       "c1",          15.0, 2.0, False),
-        ("r102",       "c1",          10.0, 2.0, False),
-        ("r103",       "c1",          15.0, 2.0, False),
-        ("c1",         "stair_a_f1",  20.0, 2.5, False),
-        ("c1",         "stair_b_f1",  20.0, 2.5, False),
-        ("c1",         "exit3",       15.0, 2.0, False),   # direct west exit
+        ("r101", "c1", 15.0, 2.0, False),
+        ("r102", "c1", 10.0, 2.0, False),
+        ("r103", "c1", 15.0, 2.0, False),
+        ("c1", "stair_a_f1", 20.0, 2.5, False),
+        ("c1", "stair_b_f1", 20.0, 2.5, False),
+        ("c1", "exit3", 15.0, 2.0, False),  # direct west exit
         # Floor 1 – exits
-        ("stair_a_f1", "exit1",        5.0, 3.5, False),
-        ("stair_b_f1", "exit2",        5.0, 3.5, False),
-
+        ("stair_a_f1", "exit1", 5.0, 3.5, False),
+        ("stair_b_f1", "exit2", 5.0, 3.5, False),
         # Floor 2 – horizontal
-        ("r201",       "c2",          15.0, 2.0, False),
-        ("r202",       "c2",          10.0, 2.0, False),
-        ("r203",       "c2",          15.0, 2.0, False),
-        ("c2",         "stair_a_f2",  20.0, 2.5, False),
-        ("c2",         "stair_b_f2",  20.0, 2.5, False),
-
+        ("r201", "c2", 15.0, 2.0, False),
+        ("r202", "c2", 10.0, 2.0, False),
+        ("r203", "c2", 15.0, 2.0, False),
+        ("c2", "stair_a_f2", 20.0, 2.5, False),
+        ("c2", "stair_b_f2", 20.0, 2.5, False),
         # Floor 3 – horizontal
-        ("r301",       "c3",          15.0, 2.0, False),
-        ("r302",       "c3",          10.0, 2.0, False),
-        ("r303",       "c3",          15.0, 2.0, False),
-        ("c3",         "stair_a_f3",  20.0, 2.5, False),
-        ("c3",         "stair_b_f3",  20.0, 2.5, False),
-
+        ("r301", "c3", 15.0, 2.0, False),
+        ("r302", "c3", 10.0, 2.0, False),
+        ("r303", "c3", 15.0, 2.0, False),
+        ("c3", "stair_a_f3", 20.0, 2.5, False),
+        ("c3", "stair_b_f3", 20.0, 2.5, False),
         # Vertical stairwell segments (F1↔F2, F2↔F3)
-        ("stair_a_f1", "stair_a_f2",  12.0, 1.5, True),
-        ("stair_a_f2", "stair_a_f3",  12.0, 1.5, True),
-        ("stair_b_f1", "stair_b_f2",  12.0, 1.5, True),
-        ("stair_b_f2", "stair_b_f3",  12.0, 1.5, True),
+        ("stair_a_f1", "stair_a_f2", 12.0, 1.5, True),
+        ("stair_a_f2", "stair_a_f3", 12.0, 1.5, True),
+        ("stair_b_f1", "stair_b_f2", 12.0, 1.5, True),
+        ("stair_b_f2", "stair_b_f3", 12.0, 1.5, True),
     ]
 
     for u, v, dist, width, is_stair in edge_defs:
@@ -147,13 +245,16 @@ def build_evacuation_graph(crowd_densities: Dict[str, float] | None = None) -> n
         density = (crowd_densities.get(u, 0.0) + crowd_densities.get(v, 0.0)) / 2.0
         weight = calculate_edge_weight(dist, density, 0.0, is_stair)
         base_time = calculate_edge_weight(dist, 0.0, 0.0, is_stair)
-        G.add_edge(u, v,
-                   weight=weight,
-                   distance=dist,
-                   width=width,
-                   is_stair=is_stair,
-                   base_time=base_time,
-                   crowd_density=density)
+        G.add_edge(
+            u,
+            v,
+            weight=weight,
+            distance=dist,
+            width=width,
+            is_stair=is_stair,
+            base_time=base_time,
+            crowd_density=density,
+        )
 
     return G
 
@@ -163,7 +264,7 @@ def get_exits(G: nx.Graph) -> list[str]:
     return [n for n, d in G.nodes(data=True) if d.get("type") == "exit"]
 
 
-def apply_smoke(G: nx.Graph, blocked_edges: list[Tuple[str, str]]) -> None:
+def apply_smoke(G: nx.Graph, blocked_edges: list[tuple[str, str]]) -> None:
     """
     Mark edges as smoke-blocked by setting weight to infinity.
     Mutates G in place — call on a copy if you need the original.

@@ -1,4 +1,5 @@
 """Tests for /health, security headers, and request tracing."""
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -39,6 +40,7 @@ def client():
 # /health
 # ---------------------------------------------------------------------------
 
+
 def test_health_returns_200(client):
     r = client.get("/health")
     assert r.status_code == 200
@@ -52,6 +54,7 @@ def test_health_returns_200(client):
 # Security headers
 # ---------------------------------------------------------------------------
 
+
 def test_security_headers_present(client):
     r = client.get("/health")
     assert r.headers.get("X-Content-Type-Options") == "nosniff"
@@ -63,10 +66,11 @@ def test_security_headers_present(client):
 # Request tracing
 # ---------------------------------------------------------------------------
 
+
 def test_response_has_request_id(client):
     r = client.get("/health")
     assert "X-Request-ID" in r.headers
-    assert len(r.headers["X-Request-ID"]) == 32   # uuid4().hex
+    assert len(r.headers["X-Request-ID"]) == 32  # uuid4().hex
 
 
 def test_client_request_id_echoed_back(client):
@@ -83,6 +87,7 @@ def test_process_time_header_present(client):
 # ---------------------------------------------------------------------------
 # Auth edge cases (P1.1)
 # ---------------------------------------------------------------------------
+
 
 def test_login_wrong_password_returns_401(client):
     client.post("/auth/register", json={"email": "u@test.com", "password": "correct-pass"})

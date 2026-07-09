@@ -4,14 +4,15 @@ import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
+
+from alembic import context
 
 # Make the backend package importable when invoked via `alembic upgrade head`.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import Base  # noqa: E402
 import models  # noqa: F401,E402  — register tables
+from database import Base  # noqa: E402
 
 config = context.config
 

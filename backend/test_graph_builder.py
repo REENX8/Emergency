@@ -3,23 +3,22 @@ test_graph_builder.py — Unit tests for building graph construction
 """
 
 import math
-import pytest
+
 import networkx as nx
 
 from graph_builder import (
+    WALK_SPEED_MS,
+    apply_smoke,
     build_evacuation_graph,
     calculate_edge_weight,
     get_exits,
-    apply_smoke,
     remove_node_safe,
-    WALK_SPEED_MS,
-    STAIR_SPEED_MS,
 )
-
 
 # ---------------------------------------------------------------------------
 # calculate_edge_weight tests
 # ---------------------------------------------------------------------------
+
 
 class TestCalculateEdgeWeight:
     def test_empty_corridor_no_crowd(self):
@@ -29,7 +28,7 @@ class TestCalculateEdgeWeight:
         assert math.isclose(w, expected)
 
     def test_higher_risk_increases_weight(self):
-        w_no_risk   = calculate_edge_weight(10.0, 0.0, risk=0.0)
+        w_no_risk = calculate_edge_weight(10.0, 0.0, risk=0.0)
         w_some_risk = calculate_edge_weight(10.0, 0.0, risk=0.5)
         assert w_some_risk > w_no_risk
 
@@ -39,7 +38,7 @@ class TestCalculateEdgeWeight:
         assert calculate_edge_weight(10.0, 0.0, risk=1.0) == float("inf")
 
     def test_stair_uses_slower_speed(self):
-        w_flat  = calculate_edge_weight(10.0, 0.0, risk=0.0, is_stair=False)
+        w_flat = calculate_edge_weight(10.0, 0.0, risk=0.0, is_stair=False)
         w_stair = calculate_edge_weight(10.0, 0.0, risk=0.0, is_stair=True)
         assert w_stair > w_flat
 
@@ -51,14 +50,15 @@ class TestCalculateEdgeWeight:
 
     def test_partial_crowd_monotone(self):
         w_empty = calculate_edge_weight(10.0, 0.0)
-        w_half  = calculate_edge_weight(10.0, 0.5)
-        w_high  = calculate_edge_weight(10.0, 0.9)
+        w_half = calculate_edge_weight(10.0, 0.5)
+        w_high = calculate_edge_weight(10.0, 0.9)
         assert w_empty < w_half < w_high
 
 
 # ---------------------------------------------------------------------------
 # build_evacuation_graph tests
 # ---------------------------------------------------------------------------
+
 
 class TestBuildEvacuationGraph:
     def test_node_count(self):
@@ -77,7 +77,7 @@ class TestBuildEvacuationGraph:
 
     def test_all_edges_have_weight(self):
         G = build_evacuation_graph()
-        for u, v, data in G.edges(data=True):
+        for _u, _v, data in G.edges(data=True):
             assert "weight" in data
             assert data["weight"] > 0
 
@@ -88,26 +88,26 @@ class TestBuildEvacuationGraph:
         assert set(exits) == {"exit1", "exit2", "exit3"}
 
     def test_crowd_density_increases_weight(self):
-        G_base  = build_evacuation_graph()
+        G_base = build_evacuation_graph()
         G_crowd = build_evacuation_graph(crowd_densities={"c1": 1.0})
         # All edges adjacent to c1 should be heavier
         for v in G_base.neighbors("c1"):
             assert G_crowd["c1"][v]["weight"] >= G_base["c1"][v]["weight"]
 
     def test_crowd_density_zero_equals_base(self):
-        G_base  = build_evacuation_graph()
-        G_zero  = build_evacuation_graph(crowd_densities={"c1": 0.0})
+        G_base = build_evacuation_graph()
+        G_zero = build_evacuation_graph(crowd_densities={"c1": 0.0})
         for v in G_base.neighbors("c1"):
             assert math.isclose(G_base["c1"][v]["weight"], G_zero["c1"][v]["weight"])
 
     def test_stair_edges_flagged(self):
         G = build_evacuation_graph()
-        stair_edges = [(u,v) for u,v,d in G.edges(data=True) if d.get("is_stair")]
-        assert len(stair_edges) == 4   # A:F1-F2, A:F2-F3, B:F1-F2, B:F2-F3
+        stair_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get("is_stair")]
+        assert len(stair_edges) == 4  # A:F1-F2, A:F2-F3, B:F1-F2, B:F2-F3
 
     def test_base_time_stored(self):
         G = build_evacuation_graph(crowd_densities={"c1": 0.8})
-        for u, v, data in G.edges(data=True):
+        for _u, _v, data in G.edges(data=True):
             assert "base_time" in data
             # base_time is weight at zero density; should be ≤ weight with crowd
             assert data["base_time"] <= data["weight"] + 1e-9
@@ -116,6 +116,7 @@ class TestBuildEvacuationGraph:
 # ---------------------------------------------------------------------------
 # get_exits tests
 # ---------------------------------------------------------------------------
+
 
 class TestGetExits:
     def test_returns_only_exits(self):
@@ -132,6 +133,7 @@ class TestGetExits:
 # apply_smoke tests
 # ---------------------------------------------------------------------------
 
+
 class TestApplySmoke:
     def test_blocks_edges(self):
         G = build_evacuation_graph()
@@ -141,7 +143,7 @@ class TestApplySmoke:
 
     def test_ignores_nonexistent_edges(self):
         G = build_evacuation_graph()
-        apply_smoke(G, [("r101", "exit1")])   # no direct edge
+        apply_smoke(G, [("r101", "exit1")])  # no direct edge
         # Should not raise; no change
         assert G.number_of_edges() == 22
 
@@ -153,14 +155,15 @@ class TestApplySmoke:
 
     def test_multiple_edges(self):
         G = build_evacuation_graph()
-        apply_smoke(G, [("r101","c1"), ("r102","c1"), ("r103","c1")])
-        for u in ["r101","r102","r103"]:
+        apply_smoke(G, [("r101", "c1"), ("r102", "c1"), ("r103", "c1")])
+        for u in ["r101", "r102", "r103"]:
             assert G[u]["c1"]["weight"] == float("inf")
 
 
 # ---------------------------------------------------------------------------
 # remove_node_safe tests
 # ---------------------------------------------------------------------------
+
 
 class TestRemoveNodeSafe:
     def test_removes_existing_node(self):

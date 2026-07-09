@@ -3,21 +3,21 @@ test_pathfinding.py — Unit tests for Dijkstra, A*, and evacuation helpers
 """
 
 import math
+
 import networkx as nx
-import pytest
 
 from pathfinding import (
-    dijkstra,
     astar,
-    find_all_exit_routes,
     compare_algorithms,
+    dijkstra,
     estimate_evacuation_time,
+    find_all_exit_routes,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 def make_simple_graph() -> nx.Graph:
     """
@@ -25,9 +25,9 @@ def make_simple_graph() -> nx.Graph:
     Node positions set so the Euclidean heuristic is admissible.
     """
     G = nx.Graph()
-    G.add_node("A", x=0,   y=0)
-    G.add_node("B", x=60,  y=0)   # 10 m at 6 px/m
-    G.add_node("C", x=120, y=0)   # 20 m at 6 px/m
+    G.add_node("A", x=0, y=0)
+    G.add_node("B", x=60, y=0)  # 10 m at 6 px/m
+    G.add_node("C", x=120, y=0)  # 20 m at 6 px/m
     G.add_edge("A", "B", weight=2.0)
     G.add_edge("B", "C", weight=3.0)
     return G
@@ -39,12 +39,18 @@ def make_forked_graph() -> nx.Graph:
     S → Y → exit2 (cost 8)
     """
     G = nx.Graph()
-    for nid, x, y in [("S",0,0),("X",60,0),("Y",0,60),("exit1",120,0),("exit2",0,120)]:
+    for nid, x, y in [
+        ("S", 0, 0),
+        ("X", 60, 0),
+        ("Y", 0, 60),
+        ("exit1", 120, 0),
+        ("exit2", 0, 120),
+    ]:
         G.add_node(nid, x=x, y=y, type="exit" if nid.startswith("exit") else "room")
-    G.add_edge("S",  "X",     weight=3.0)
-    G.add_edge("X",  "exit1", weight=2.0)
-    G.add_edge("S",  "Y",     weight=4.0)
-    G.add_edge("Y",  "exit2", weight=4.0)
+    G.add_edge("S", "X", weight=3.0)
+    G.add_edge("X", "exit1", weight=2.0)
+    G.add_edge("S", "Y", weight=4.0)
+    G.add_edge("Y", "exit2", weight=4.0)
     return G
 
 
@@ -54,7 +60,7 @@ def make_smoke_graph() -> nx.Graph:
     A --(10)--> C  (alternate route)
     """
     G = nx.Graph()
-    for nid, x, y in [("A",0,0),("B",60,0),("C",120,0)]:
+    for nid, x, y in [("A", 0, 0), ("B", 60, 0), ("C", 120, 0)]:
         G.add_node(nid, x=x, y=y)
     G.add_edge("A", "B", weight=float("inf"), smoke_blocked=True)
     G.add_edge("B", "C", weight=1.0)
@@ -65,6 +71,7 @@ def make_smoke_graph() -> nx.Graph:
 # ---------------------------------------------------------------------------
 # Dijkstra tests
 # ---------------------------------------------------------------------------
+
 
 class TestDijkstra:
     def test_simple_path(self):
@@ -105,7 +112,7 @@ class TestDijkstra:
 
     def test_returns_optimal_path(self):
         G = nx.Graph()
-        for nid, x, y in [("A",0,0),("B",60,0),("C",30,60),("D",90,0)]:
+        for nid, x, y in [("A", 0, 0), ("B", 60, 0), ("C", 30, 60), ("D", 90, 0)]:
             G.add_node(nid, x=x, y=y)
         G.add_edge("A", "B", weight=1.0)
         G.add_edge("A", "C", weight=5.0)
@@ -120,6 +127,7 @@ class TestDijkstra:
 # A* tests
 # ---------------------------------------------------------------------------
 
+
 class TestAstar:
     def test_simple_path(self):
         G = make_simple_graph()
@@ -133,7 +141,9 @@ class TestAstar:
             for tgt in ["exit1", "exit2"]:
                 d_path, d_cost = dijkstra(G, src, tgt)
                 a_path, a_cost = astar(G, src, tgt)
-                assert math.isclose(d_cost, a_cost), f"{src}→{tgt}: dijkstra={d_cost} astar={a_cost}"
+                assert math.isclose(d_cost, a_cost), (
+                    f"{src}→{tgt}: dijkstra={d_cost} astar={a_cost}"
+                )
 
     def test_unreachable_target(self):
         G = make_simple_graph()
@@ -152,6 +162,7 @@ class TestAstar:
 # ---------------------------------------------------------------------------
 # find_all_exit_routes tests
 # ---------------------------------------------------------------------------
+
 
 class TestFindAllExitRoutes:
     def test_sorted_by_cost(self):
@@ -183,7 +194,7 @@ class TestFindAllExitRoutes:
         G = make_forked_graph()
         d_routes = find_all_exit_routes(G, "S", ["exit1", "exit2"], "dijkstra")
         a_routes = find_all_exit_routes(G, "S", ["exit1", "exit2"], "astar")
-        for dr, ar in zip(d_routes, a_routes):
+        for dr, ar in zip(d_routes, a_routes, strict=True):
             assert dr["exit"] == ar["exit"]
             assert math.isclose(dr["cost_seconds"], ar["cost_seconds"])
 
@@ -191,6 +202,7 @@ class TestFindAllExitRoutes:
 # ---------------------------------------------------------------------------
 # compare_algorithms tests
 # ---------------------------------------------------------------------------
+
 
 class TestCompareAlgorithms:
     def test_returns_both_algorithms(self):
@@ -212,6 +224,7 @@ class TestCompareAlgorithms:
 # ---------------------------------------------------------------------------
 # estimate_evacuation_time tests
 # ---------------------------------------------------------------------------
+
 
 class TestEstimateEvacuationTime:
     def test_overall_is_max_individual(self):
@@ -236,3 +249,41 @@ class TestEstimateEvacuationTime:
         result = estimate_evacuation_time(G, [], ["exit1"], "dijkstra")
         assert result["overall_seconds"] == 0.0
         assert result["per_room"] == {}
+
+
+# ---------------------------------------------------------------------------
+# A* admissibility on graphs whose drawing scale is not 6 px/m
+# ---------------------------------------------------------------------------
+
+
+class TestAstarAdmissibility:
+    def _scaled_graph(self) -> nx.Graph:
+        """Layout drawn at ~120 px/m — the old fixed 6 px/m heuristic
+        overestimated remaining cost 20× here, steering A* onto the direct
+        (but slower) edge. Optimal: s → a → t (7.1 s) vs direct 14.3 s."""
+        G = nx.Graph()
+        G.add_node("s", x=0, y=0)
+        G.add_node("a", x=600, y=0)
+        G.add_node("t", x=1200, y=0)
+        G.add_edge("s", "a", distance=5, weight=5 / 1.4)
+        G.add_edge("a", "t", distance=5, weight=5 / 1.4)
+        G.add_edge("s", "t", distance=20, weight=20 / 1.4)
+        return G
+
+    def test_astar_matches_dijkstra_on_non_default_scale(self):
+        G = self._scaled_graph()
+        d_path, d_cost = dijkstra(G, "s", "t")
+        a_path, a_cost = astar(G, "s", "t")
+        assert d_path == ["s", "a", "t"]
+        assert a_path == d_path
+        assert math.isclose(a_cost, d_cost)
+
+    def test_heuristic_degrades_to_dijkstra_without_geometry(self):
+        """Zero/absent distances → ratio unknown → h = 0 (still optimal)."""
+        G = nx.Graph()
+        G.add_node("u", x=0, y=0)
+        G.add_node("v", x=50, y=0)
+        G.add_edge("u", "v", weight=3.0)  # no distance attribute
+        path, cost = astar(G, "u", "v")
+        assert path == ["u", "v"]
+        assert math.isclose(cost, 3.0)

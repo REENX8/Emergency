@@ -20,14 +20,15 @@ the main evacuation engine when a fire incident is reported.
 """
 
 import math
+
 import networkx as nx
 
 from graph_builder import calculate_edge_weight
 
-LAMBDA     = 0.15   # exponential decay rate (per metre)
-PX_PER_M   = 6.0    # pixels per metre (matches graph_builder.py)
-S_FIRE     = 1.0    # smoke concentration at fire source
-BLOCK_THR  = 0.9    # smoke level that makes edge impassable
+LAMBDA = 0.15  # exponential decay rate (per metre)
+PX_PER_M = 6.0  # pixels per metre (matches graph_builder.py)
+S_FIRE = 1.0  # smoke concentration at fire source
+BLOCK_THR = 0.9  # smoke level that makes edge impassable
 
 
 def compute_smoke_levels(
@@ -39,11 +40,18 @@ def compute_smoke_levels(
     """
     Compute continuous smoke level s ∈ [0, 1] for every edge in the graph.
 
+    Per the model (README / evacuation_report_final.pdf), smoke depends on
+    distance from the fire and on wind DIRECTION only:
+        s(e) = s_fire × exp(−λ × dist) × φ(θ_wind)
+    Wind SPEED does not enter this formula — it affects fire spread speed
+    instead (see fire_spread.py).
+
     Args:
         fire_node:         node_key of the fire source
         G:                 building NetworkX graph (nodes must have x, y attributes)
         wind_direction_deg: direction wind blows FROM (degrees, 0=N, 90=E)
-        wind_speed_ms:     wind speed in m/s (scales effective spread radius)
+        wind_speed_ms:     accepted for interface symmetry with fire_spread;
+                           unused by this formula (see note above)
 
     Returns:
         dict mapping (u, v) tuple → smoke level [0, 1].
@@ -59,8 +67,8 @@ def compute_smoke_levels(
     toward_deg = (wind_direction_deg + 180) % 360
     toward_rad = math.radians(toward_deg)
     # Compass → screen: 0°=N means +y on screen (y increases downward)
-    wx = math.sin(toward_rad)    # east component (+x)
-    wy = -math.cos(toward_rad)   # north component (screen y flipped)
+    wx = math.sin(toward_rad)  # east component (+x)
+    wy = -math.cos(toward_rad)  # north component (screen y flipped)
 
     levels: dict[tuple[str, str], float] = {}
 
@@ -76,7 +84,7 @@ def compute_smoke_levels(
 
         # Distance from fire to midpoint in metres
         dist_px = math.hypot(mid_x - fx, mid_y - fy)
-        dist_m  = dist_px / PX_PER_M
+        dist_m = dist_px / PX_PER_M
 
         # phi: wind alignment factor (from wind direction only)
         ex = vx - ux
@@ -138,10 +146,10 @@ def smoke_levels_to_cytoscape(smoke_levels: dict[tuple[str, str], float]) -> lis
     """
     return [
         {
-            "source":      u,
-            "target":      v,
+            "source": u,
+            "target": v,
             "smoke_level": round(s, 4),
-            "blocked":     s >= BLOCK_THR,
+            "blocked": s >= BLOCK_THR,
         }
         for (u, v), s in smoke_levels.items()
     ]

@@ -4,21 +4,22 @@ test_analysis.py — Tests for connectivity, bottleneck, safety score,
 """
 
 import math
+
 import networkx as nx
 import pytest
 
 from analysis import (
     check_connectivity,
-    find_bottlenecks,
-    compute_safety_score,
     compute_maxflow_distribution,
+    compute_safety_score,
+    find_bottlenecks,
     run_experiments,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
+
 
 def make_triangle() -> nx.Graph:
     """A → B → C → A: fully connected, no bridges."""
@@ -26,12 +27,36 @@ def make_triangle() -> nx.Graph:
     attrs = {"x": 0, "y": 0, "type": "room", "capacity": 20}
     for n in ("A", "B", "C"):
         G.add_node(n, **attrs)
-    G.add_edge("A", "B", weight=1.0, width=2.0, distance=10.0,
-               base_time=1.0, crowd_density=0.0, is_stair=False)
-    G.add_edge("B", "C", weight=1.0, width=2.0, distance=10.0,
-               base_time=1.0, crowd_density=0.0, is_stair=False)
-    G.add_edge("C", "A", weight=1.0, width=2.0, distance=10.0,
-               base_time=1.0, crowd_density=0.0, is_stair=False)
+    G.add_edge(
+        "A",
+        "B",
+        weight=1.0,
+        width=2.0,
+        distance=10.0,
+        base_time=1.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
+    G.add_edge(
+        "B",
+        "C",
+        weight=1.0,
+        width=2.0,
+        distance=10.0,
+        base_time=1.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
+    G.add_edge(
+        "C",
+        "A",
+        weight=1.0,
+        width=2.0,
+        distance=10.0,
+        base_time=1.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
     return G
 
 
@@ -40,10 +65,26 @@ def make_bridge_graph() -> nx.Graph:
     G = nx.Graph()
     for n, x in [("A", 0), ("B", 60), ("C", 120)]:
         G.add_node(n, x=x, y=0, type="room", capacity=20)
-    G.add_edge("A", "B", weight=2.0, width=2.0, distance=10.0,
-               base_time=2.0, crowd_density=0.0, is_stair=False)
-    G.add_edge("B", "C", weight=3.0, width=2.0, distance=15.0,
-               base_time=3.0, crowd_density=0.0, is_stair=False)
+    G.add_edge(
+        "A",
+        "B",
+        weight=2.0,
+        width=2.0,
+        distance=10.0,
+        base_time=2.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
+    G.add_edge(
+        "B",
+        "C",
+        weight=3.0,
+        width=2.0,
+        distance=15.0,
+        base_time=3.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
     return G
 
 
@@ -51,24 +92,49 @@ def make_building_graph() -> nx.Graph:
     """Simple 2-room 1-corridor 1-exit building for evacuation tests."""
     G = nx.Graph()
     nodes = [
-        ("r1",   {"x": 0,   "y": 0,   "type": "room",     "capacity": 20}),
-        ("r2",   {"x": 120, "y": 0,   "type": "room",     "capacity": 20}),
-        ("c1",   {"x": 60,  "y": 0,   "type": "corridor", "capacity": 50}),
-        ("exit", {"x": 60,  "y": -60, "type": "exit",     "capacity": 100}),
+        ("r1", {"x": 0, "y": 0, "type": "room", "capacity": 20}),
+        ("r2", {"x": 120, "y": 0, "type": "room", "capacity": 20}),
+        ("c1", {"x": 60, "y": 0, "type": "corridor", "capacity": 50}),
+        ("exit", {"x": 60, "y": -60, "type": "exit", "capacity": 100}),
     ]
     G.add_nodes_from(nodes)
-    G.add_edge("r1", "c1",   weight=5.0,  width=2.0, distance=10.0,
-               base_time=5.0,  crowd_density=0.0, is_stair=False)
-    G.add_edge("r2", "c1",   weight=5.0,  width=2.0, distance=10.0,
-               base_time=5.0,  crowd_density=0.0, is_stair=False)
-    G.add_edge("c1", "exit", weight=3.0,  width=3.0, distance=8.0,
-               base_time=3.0,  crowd_density=0.0, is_stair=False)
+    G.add_edge(
+        "r1",
+        "c1",
+        weight=5.0,
+        width=2.0,
+        distance=10.0,
+        base_time=5.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
+    G.add_edge(
+        "r2",
+        "c1",
+        weight=5.0,
+        width=2.0,
+        distance=10.0,
+        base_time=5.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
+    G.add_edge(
+        "c1",
+        "exit",
+        weight=3.0,
+        width=3.0,
+        distance=8.0,
+        base_time=3.0,
+        crowd_density=0.0,
+        is_stair=False,
+    )
     return G
 
 
 # ---------------------------------------------------------------------------
 # Connectivity tests
 # ---------------------------------------------------------------------------
+
 
 class TestCheckConnectivity:
     def test_connected_graph(self):
@@ -106,6 +172,7 @@ class TestCheckConnectivity:
 # Bottleneck tests
 # ---------------------------------------------------------------------------
 
+
 class TestFindBottlenecks:
     def test_no_bridges_in_triangle(self):
         G = make_triangle()
@@ -135,14 +202,20 @@ class TestFindBottlenecks:
     def test_returns_required_keys(self):
         G = make_building_graph()
         result = find_bottlenecks(G)
-        for key in ("bridge_edges", "articulation_points",
-                    "min_edge_cut_size", "min_edge_cut", "severity"):
+        for key in (
+            "bridge_edges",
+            "articulation_points",
+            "min_edge_cut_size",
+            "min_edge_cut",
+            "severity",
+        ):
             assert key in result
 
 
 # ---------------------------------------------------------------------------
 # Safety score tests
 # ---------------------------------------------------------------------------
+
 
 class TestComputeSafetyScore:
     def test_score_in_range(self):
@@ -151,11 +224,19 @@ class TestComputeSafetyScore:
         assert 0 <= result["score"] <= 100
 
     def test_more_exits_higher_score(self):
-        G_one  = make_building_graph()  # 1 exit, 4 nodes
-        G_two  = make_building_graph()
+        G_one = make_building_graph()  # 1 exit, 4 nodes
+        G_two = make_building_graph()
         G_two.add_node("exit2", x=100, y=-60, type="exit", capacity=100)
-        G_two.add_edge("c1", "exit2", weight=3.0, width=3.0, distance=8.0,
-                       base_time=3.0, crowd_density=0.0, is_stair=False)
+        G_two.add_edge(
+            "c1",
+            "exit2",
+            weight=3.0,
+            width=3.0,
+            distance=8.0,
+            base_time=3.0,
+            crowd_density=0.0,
+            is_stair=False,
+        )
         score_one = compute_safety_score(G_one)["score"]
         score_two = compute_safety_score(G_two)["score"]
         assert score_two >= score_one
@@ -185,9 +266,7 @@ class TestComputeSafetyScore:
         f = result["factors"]
         # exit_coverage*40 + min_cut_factor*30 + edge_connectivity_ratio*30 == score
         reconstructed = (
-            f["exit_coverage"]            * 40 +
-            f["min_cut_factor"]           * 30 +
-            f["edge_connectivity_ratio"]  * 30
+            f["exit_coverage"] * 40 + f["min_cut_factor"] * 30 + f["edge_connectivity_ratio"] * 30
         )
         assert math.isclose(result["score"], round(reconstructed, 1), abs_tol=0.1)
 
@@ -195,6 +274,7 @@ class TestComputeSafetyScore:
 # ---------------------------------------------------------------------------
 # Max-flow tests
 # ---------------------------------------------------------------------------
+
 
 class TestComputeMaxflowDistribution:
     def test_basic_flow_reaches_exit(self):
@@ -231,6 +311,7 @@ class TestComputeMaxflowDistribution:
 # ---------------------------------------------------------------------------
 # Experiment runner tests
 # ---------------------------------------------------------------------------
+
 
 class TestRunExperiments:
     def test_returns_six_rows(self):

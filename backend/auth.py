@@ -11,8 +11,7 @@ Expiry:    24 hours
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -50,7 +49,9 @@ JWT_SECRET = _resolve_secret()
 # `bcrypt__truncate_error=False` keeps backward compatibility with the
 # bcrypt 72-byte limit without raising on long passphrases.
 pwd_ctx = CryptContext(
-    schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False,
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__truncate_error=False,
 )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
@@ -67,11 +68,11 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
-def create_access_token(sub: str, extra: Optional[dict] = None) -> str:
+def create_access_token(sub: str, extra: dict | None = None) -> str:
     payload = {
         "sub": sub,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        "iat": datetime.now(UTC),
+        "exp": datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     }
     if extra:
         payload.update(extra)
@@ -86,11 +87,11 @@ def _decode_token(token: str) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid or expired token: {exc}",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
 
 
 def get_current_user(
-    token: Optional[str] = Depends(oauth2_scheme),
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     """FastAPI dependency — resolves the User row from the bearer token.

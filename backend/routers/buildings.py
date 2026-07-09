@@ -4,14 +4,13 @@ routers/buildings.py — Building CRUD, floor image upload, node/edge management
 
 import copy
 import uuid
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
 import storage
 from audit import audit
-from auth import get_current_user, require_role
+from auth import require_role
 from database import get_db
 from dynamic_graph import (
     build_graph_from_db,
@@ -24,12 +23,18 @@ from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_e
 from rate_limit import limiter, user_or_ip
 from realtime import broadcast_sync
 from schemas import (
-    BuildingCreate, BuildingResponse, BuildingUpdate,
-    BuildingImportPayload, BuildingImportResponse,
-    EdgeCreate, EdgeResponse,
+    BuildingCreate,
+    BuildingImportPayload,
+    BuildingImportResponse,
+    BuildingResponse,
+    BuildingUpdate,
+    EdgeCreate,
+    EdgeResponse,
     FloorResponse,
     GraphResponse,
-    NodeCreate, NodeResponse, NodeUpdate,
+    NodeCreate,
+    NodeResponse,
+    NodeUpdate,
     Page,
 )
 
@@ -41,8 +46,8 @@ MAX_LIMIT = 500
 from fire_spread import compute_fire_spread, fire_spread_to_cytoscape
 from smoke_propagation import (
     BLOCK_THR,
-    compute_smoke_levels,
     apply_smoke_levels,
+    compute_smoke_levels,
     smoke_levels_to_cytoscape,
 )
 from weather import fetch_weather
@@ -54,6 +59,7 @@ router = APIRouter(prefix="/buildings", tags=["buildings"])
 # Building CRUD
 # ---------------------------------------------------------------------------
 
+
 @router.post("", response_model=BuildingResponse, status_code=201)
 def create_building(
     payload: BuildingCreate,
@@ -64,15 +70,21 @@ def create_building(
     db.add(building)
     db.commit()
     db.refresh(building)
-    audit(db, actor, "building.create", target_type="building", target_id=building.id,
-          payload={"name": building.name})
+    audit(
+        db,
+        actor,
+        "building.create",
+        target_type="building",
+        target_id=building.id,
+        payload={"name": building.name},
+    )
     return building
 
 
 @router.get("", response_model=Page[BuildingResponse])
 def list_buildings(
     db: Session = Depends(get_db),
-    limit:  int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
 ):
     q = db.query(Building).order_by(Building.created_at.desc())
@@ -94,6 +106,10 @@ def import_building(
         name=payload.name,
         address=payload.address,
         description=payload.description,
+        tmd_station_id=payload.tmd_station_id,
+        has_sprinkler=payload.has_sprinkler,
+        building_type=payload.building_type,
+        total_floors=payload.total_floors,
     )
     db.add(building)
     db.flush()
@@ -117,9 +133,18 @@ def import_building(
 
     db.commit()
     db.refresh(building)
-    audit(db, actor, "building.import", target_type="building", target_id=building.id,
-          payload={"name": building.name, "nodes": len(payload.nodes), "edges": len(payload.edges)})
-    return {**building.__dict__, "nodes_created": len(payload.nodes), "edges_created": len(payload.edges)}
+    # Materialise the response before audit() — its commit expires the ORM
+    # instance, which would leave building.__dict__ empty.
+    result = BuildingResponse.model_validate(building).model_dump()
+    audit(
+        db,
+        actor,
+        "building.import",
+        target_type="building",
+        target_id=result["id"],
+        payload={"name": result["name"], "nodes": len(payload.nodes), "edges": len(payload.edges)},
+    )
+    return {**result, "nodes_created": len(payload.nodes), "edges_created": len(payload.edges)}
 
 
 @router.get("/{building_id}", response_model=BuildingResponse)
@@ -145,8 +170,14 @@ def update_building(
         setattr(b, k, v)
     db.commit()
     db.refresh(b)
-    audit(db, actor, "building.update", target_type="building", target_id=building_id,
-          payload={"changed": list(updates.keys())})
+    audit(
+        db,
+        actor,
+        "building.update",
+        target_type="building",
+        target_id=building_id,
+        payload={"changed": list(updates.keys())},
+    )
     return b
 
 
@@ -162,22 +193,29 @@ def delete_building(
     name = b.name
     db.delete(b)
     db.commit()
-    audit(db, actor, "building.delete", target_type="building", target_id=building_id,
-          payload={"name": name})
+    audit(
+        db,
+        actor,
+        "building.delete",
+        target_type="building",
+        target_id=building_id,
+        payload={"name": name},
+    )
 
 
 # ---------------------------------------------------------------------------
 # Floor image upload
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{building_id}/floors", response_model=FloorResponse, status_code=201)
 async def upload_floor(
-    building_id:   int,
-    floor_number:  int         = Form(..., ge=-50, le=200),
-    scale_px_per_m: float      = Form(default=6.0, gt=0, le=1000),
-    image:         UploadFile  = File(...),
-    db:            Session     = Depends(get_db),
-    actor:         User        = Depends(require_role("operator")),
+    building_id: int,
+    floor_number: int = Form(..., ge=-50, le=200),
+    scale_px_per_m: float = Form(default=6.0, gt=0, le=1000),
+    image: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_role("operator")),
 ):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
@@ -203,8 +241,9 @@ async def upload_floor(
     if ext in ("png", "jpg", "jpeg"):
         try:
             import struct
+
             if ext == "png":
-                width_px  = struct.unpack(">I", content[16:20])[0]
+                width_px = struct.unpack(">I", content[16:20])[0]
                 height_px = struct.unpack(">I", content[20:24])[0]
         except Exception:
             pass
@@ -217,29 +256,41 @@ async def upload_floor(
     )
     if existing:
         await storage.delete_file(existing.image_filename)
-        existing.image_filename  = stored_path
-        existing.image_width_px  = width_px
+        existing.image_filename = stored_path
+        existing.image_width_px = width_px
         existing.image_height_px = height_px
-        existing.scale_px_per_m  = scale_px_per_m
+        existing.scale_px_per_m = scale_px_per_m
         db.commit()
         db.refresh(existing)
-        audit(db, actor, "floor.replace", target_type="floor", target_id=existing.id,
-              payload={"building_id": building_id, "floor_number": floor_number})
+        audit(
+            db,
+            actor,
+            "floor.replace",
+            target_type="floor",
+            target_id=existing.id,
+            payload={"building_id": building_id, "floor_number": floor_number},
+        )
         return existing
 
     floor = Floor(
-        building_id     = building_id,
-        floor_number    = floor_number,
-        image_filename  = stored_path,
-        image_width_px  = width_px,
-        image_height_px = height_px,
-        scale_px_per_m  = scale_px_per_m,
+        building_id=building_id,
+        floor_number=floor_number,
+        image_filename=stored_path,
+        image_width_px=width_px,
+        image_height_px=height_px,
+        scale_px_per_m=scale_px_per_m,
     )
     db.add(floor)
     db.commit()
     db.refresh(floor)
-    audit(db, actor, "floor.create", target_type="floor", target_id=floor.id,
-          payload={"building_id": building_id, "floor_number": floor_number})
+    audit(
+        db,
+        actor,
+        "floor.create",
+        target_type="floor",
+        target_id=floor.id,
+        payload={"building_id": building_id, "floor_number": floor_number},
+    )
     return floor
 
 
@@ -247,12 +298,15 @@ async def upload_floor(
 def list_floors(building_id: int, db: Session = Depends(get_db)):
     if not db.get(Building, building_id):
         raise HTTPException(404, detail="Building not found")
-    return db.query(Floor).filter(Floor.building_id == building_id).order_by(Floor.floor_number).all()
+    return (
+        db.query(Floor).filter(Floor.building_id == building_id).order_by(Floor.floor_number).all()
+    )
 
 
 # ---------------------------------------------------------------------------
 # Node management
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{building_id}/nodes", response_model=NodeResponse, status_code=201)
 def create_node(
@@ -271,17 +325,26 @@ def create_node(
         .first()
     )
     if existing:
-        raise HTTPException(409, detail=f"Node key '{payload.node_key}' already exists in this building")
+        raise HTTPException(
+            409, detail=f"Node key '{payload.node_key}' already exists in this building"
+        )
 
     node = Node(building_id=building_id, **payload.model_dump())
     db.add(node)
     db.commit()
     db.refresh(node)
     invalidate_graph_cache(building_id)
-    audit(db, actor, "node.create", target_type="node", target_id=node.id,
-          payload={"building_id": building_id, "node_key": node.node_key})
-    broadcast_sync(building_id, "node.created",
-                   {"node_key": node.node_key, "type": node.type}, actor=actor)
+    audit(
+        db,
+        actor,
+        "node.create",
+        target_type="node",
+        target_id=node.id,
+        payload={"building_id": building_id, "node_key": node.node_key},
+    )
+    broadcast_sync(
+        building_id, "node.created", {"node_key": node.node_key, "type": node.type}, actor=actor
+    )
     return node
 
 
@@ -289,7 +352,7 @@ def create_node(
 def list_nodes(
     building_id: int,
     db: Session = Depends(get_db),
-    limit:  int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     offset: int = Query(default=0, ge=0),
 ):
     if not db.get(Building, building_id):
@@ -308,11 +371,7 @@ def update_node(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role("operator")),
 ):
-    node = (
-        db.query(Node)
-        .filter(Node.building_id == building_id, Node.node_key == node_key)
-        .first()
-    )
+    node = db.query(Node).filter(Node.building_id == building_id, Node.node_key == node_key).first()
     if not node:
         raise HTTPException(404, detail="Node not found")
 
@@ -322,10 +381,20 @@ def update_node(
     db.commit()
     db.refresh(node)
     invalidate_graph_cache(building_id)
-    audit(db, actor, "node.update", target_type="node", target_id=node.id,
-          payload={"building_id": building_id, "node_key": node_key, "changed": list(updates.keys())})
-    broadcast_sync(building_id, "node.updated",
-                   {"node_key": node_key, "changed": list(updates.keys())}, actor=actor)
+    audit(
+        db,
+        actor,
+        "node.update",
+        target_type="node",
+        target_id=node.id,
+        payload={"building_id": building_id, "node_key": node_key, "changed": list(updates.keys())},
+    )
+    broadcast_sync(
+        building_id,
+        "node.updated",
+        {"node_key": node_key, "changed": list(updates.keys())},
+        actor=actor,
+    )
     return node
 
 
@@ -336,31 +405,32 @@ def delete_node(
     db: Session = Depends(get_db),
     actor: User = Depends(require_role("operator")),
 ):
-    node = (
-        db.query(Node)
-        .filter(Node.building_id == building_id, Node.node_key == node_key)
-        .first()
-    )
+    node = db.query(Node).filter(Node.building_id == building_id, Node.node_key == node_key).first()
     if not node:
         raise HTTPException(404, detail="Node not found")
     node_id = node.id
     # Delete adjacent edges too
     db.query(Edge).filter(
-        Edge.building_id == building_id,
-        (Edge.u_key == node_key) | (Edge.v_key == node_key)
+        Edge.building_id == building_id, (Edge.u_key == node_key) | (Edge.v_key == node_key)
     ).delete(synchronize_session=False)
     db.delete(node)
     db.commit()
     invalidate_graph_cache(building_id)
-    audit(db, actor, "node.delete", target_type="node", target_id=node_id,
-          payload={"building_id": building_id, "node_key": node_key})
-    broadcast_sync(building_id, "node.deleted",
-                   {"node_key": node_key}, actor=actor)
+    audit(
+        db,
+        actor,
+        "node.delete",
+        target_type="node",
+        target_id=node_id,
+        payload={"building_id": building_id, "node_key": node_key},
+    )
+    broadcast_sync(building_id, "node.deleted", {"node_key": node_key}, actor=actor)
 
 
 # ---------------------------------------------------------------------------
 # Edge management
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{building_id}/edges", response_model=EdgeResponse, status_code=201)
 def create_edge(
@@ -381,11 +451,15 @@ def create_edge(
             raise HTTPException(400, detail=f"Node '{key}' does not exist in this building")
 
     # Prevent duplicate edges
-    dup = db.query(Edge).filter(
-        Edge.building_id == building_id,
-        ((Edge.u_key == payload.u_key) & (Edge.v_key == payload.v_key)) |
-        ((Edge.u_key == payload.v_key) & (Edge.v_key == payload.u_key))
-    ).first()
+    dup = (
+        db.query(Edge)
+        .filter(
+            Edge.building_id == building_id,
+            ((Edge.u_key == payload.u_key) & (Edge.v_key == payload.v_key))
+            | ((Edge.u_key == payload.v_key) & (Edge.v_key == payload.u_key)),
+        )
+        .first()
+    )
     if dup:
         raise HTTPException(409, detail="Edge already exists between these two nodes")
 
@@ -394,10 +468,20 @@ def create_edge(
     db.commit()
     db.refresh(edge)
     invalidate_graph_cache(building_id)
-    audit(db, actor, "edge.create", target_type="edge", target_id=edge.id,
-          payload={"building_id": building_id, "u": payload.u_key, "v": payload.v_key})
-    broadcast_sync(building_id, "edge.created",
-                   {"id": edge.id, "u": payload.u_key, "v": payload.v_key}, actor=actor)
+    audit(
+        db,
+        actor,
+        "edge.create",
+        target_type="edge",
+        target_id=edge.id,
+        payload={"building_id": building_id, "u": payload.u_key, "v": payload.v_key},
+    )
+    broadcast_sync(
+        building_id,
+        "edge.created",
+        {"id": edge.id, "u": payload.u_key, "v": payload.v_key},
+        actor=actor,
+    )
     return edge
 
 
@@ -421,15 +505,21 @@ def delete_edge(
     db.delete(edge)
     db.commit()
     invalidate_graph_cache(building_id)
-    audit(db, actor, "edge.delete", target_type="edge", target_id=edge_id,
-          payload={"building_id": building_id})
-    broadcast_sync(building_id, "edge.deleted",
-                   {"id": edge_id}, actor=actor)
+    audit(
+        db,
+        actor,
+        "edge.delete",
+        target_type="edge",
+        target_id=edge_id,
+        payload={"building_id": building_id},
+    )
+    broadcast_sync(building_id, "edge.deleted", {"id": edge_id}, actor=actor)
 
 
 # ---------------------------------------------------------------------------
 # Graph snapshot (for Cytoscape.js rendering)
 # ---------------------------------------------------------------------------
+
 
 @router.get("/{building_id}/graph", response_model=GraphResponse)
 def get_graph(building_id: int, db: Session = Depends(get_db)):
@@ -437,7 +527,9 @@ def get_graph(building_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, detail="Building not found")
     G = build_graph_from_db(building_id, db)
     cy = graph_to_cytoscape(G)
-    floors = db.query(Floor).filter(Floor.building_id == building_id).order_by(Floor.floor_number).all()
+    floors = (
+        db.query(Floor).filter(Floor.building_id == building_id).order_by(Floor.floor_number).all()
+    )
     return GraphResponse(nodes=cy["nodes"], edges=cy["edges"], floors=floors)
 
 
@@ -445,23 +537,25 @@ def get_graph(building_id: int, db: Session = Depends(get_db)):
 # Evacuation simulation
 # ---------------------------------------------------------------------------
 
-from pydantic import BaseModel, Field as PField
+from pydantic import BaseModel
+from pydantic import Field as PField
+
 
 class CrowdDensityItem(BaseModel):
-    node_key: str   = PField(..., min_length=1, max_length=64)
-    density:  float = PField(ge=0.0, le=1.0)
+    node_key: str = PField(..., min_length=1, max_length=64)
+    density: float = PField(ge=0.0, le=1.0)
 
 
 class EvacuateBuildingRequest(BaseModel):
-    fire_location:      str                                          = PField(..., min_length=1, max_length=64)
-    blocked_exits:      list[str]                                    = PField(default_factory=list, max_length=200)
-    crowd_densities:    list[CrowdDensityItem]                       = PField(default_factory=list, max_length=500)
-    use_weather_wind:   bool                                         = True
-    manual_wind_direction: Optional[float]                           = None
-    manual_wind_speed:     Optional[float]                           = None
-    algorithm:          str                                          = PField(default="dijkstra", max_length=20)
-    compare_algorithms: bool                                         = True
-    occupied_rooms:     list[str]                                    = PField(default_factory=list, max_length=500)
+    fire_location: str = PField(..., min_length=1, max_length=64)
+    blocked_exits: list[str] = PField(default_factory=list, max_length=200)
+    crowd_densities: list[CrowdDensityItem] = PField(default_factory=list, max_length=500)
+    use_weather_wind: bool = True
+    manual_wind_direction: float | None = None
+    manual_wind_speed: float | None = None
+    algorithm: str = PField(default="dijkstra", max_length=20)
+    compare_algorithms: bool = True
+    occupied_rooms: list[str] = PField(default_factory=list, max_length=500)
 
     model_config = {
         "json_schema_extra": {
@@ -496,7 +590,9 @@ async def evacuate_building(
     # Validate inputs
     all_nodes = set(G.nodes())
     if req.fire_location not in all_nodes:
-        raise HTTPException(400, detail=f"fire_location '{req.fire_location}' not in building graph")
+        raise HTTPException(
+            400, detail=f"fire_location '{req.fire_location}' not in building graph"
+        )
     for n in req.blocked_exits + req.occupied_rooms:
         if n and n not in all_nodes:
             raise HTTPException(400, detail=f"Node '{n}' not found in building graph")
@@ -506,13 +602,13 @@ async def evacuate_building(
         weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
-            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_speed_ms": req.manual_wind_speed or 0.0,
             "wind_direction_deg": req.manual_wind_direction or 0.0,
-            "temperature_c":      None,
-            "humidity_pct":       None,
-            "description":        "Manual override",
-            "station":            "manual",
-            "source":             "manual",
+            "temperature_c": None,
+            "humidity_pct": None,
+            "description": "Manual override",
+            "station": "manual",
+            "source": "manual",
         }
 
     # Smoke spread — continuous model, consistent with /evacuate/compare and /smoke/propagate
@@ -526,6 +622,7 @@ async def evacuate_building(
     # Apply conditions to a working copy
     G_sim = copy.deepcopy(G)
     from graph_builder import remove_node_safe
+
     apply_smoke_levels(G_sim, smoke_levels)
 
     removed_exits = []
@@ -549,20 +646,22 @@ async def evacuate_building(
         evac_estimate = estimate_evacuation_time(G_sim, req.occupied_rooms, exits, req.algorithm)
 
     cy = graph_to_cytoscape(G_sim)
-    floors = db.query(Floor).filter(Floor.building_id == building_id).order_by(Floor.floor_number).all()
+    floors = (
+        db.query(Floor).filter(Floor.building_id == building_id).order_by(Floor.floor_number).all()
+    )
 
     return {
-        "fire_location":       req.fire_location,
-        "primary_routes":      primary_routes,
-        "comparison":          comparison,
+        "fire_location": req.fire_location,
+        "primary_routes": primary_routes,
+        "comparison": comparison,
         "smoke_blocked_edges": [[u, v] for (u, v), s in smoke_levels.items() if s >= BLOCK_THR],
-        "removed_exits":       removed_exits,
-        "weather":             weather,
+        "removed_exits": removed_exits,
+        "weather": weather,
         "evacuation_estimate": evac_estimate,
-        "graph_state":         cy,
+        "graph_state": cy,
         "floors": [
             {
-                "floor_number":   f.floor_number,
+                "floor_number": f.floor_number,
                 "image_filename": f.image_filename,
                 "image_width_px": f.image_width_px,
                 "image_height_px": f.image_height_px,
@@ -577,12 +676,13 @@ async def evacuate_building(
 # Dedicated algorithm comparison endpoint (Feature 1)
 # ---------------------------------------------------------------------------
 
+
 class CompareRequest(BaseModel):
-    fire_location:         str
-    crowd_densities:       list[CrowdDensityItem] = []
-    use_weather_wind:      bool  = True
-    manual_wind_direction: Optional[float] = None
-    manual_wind_speed:     Optional[float] = None
+    fire_location: str
+    crowd_densities: list[CrowdDensityItem] = []
+    use_weather_wind: bool = True
+    manual_wind_direction: float | None = None
+    manual_wind_speed: float | None = None
 
 
 @router.post("/{building_id}/evacuate/compare")
@@ -617,10 +717,13 @@ async def compare_evacuation(
         weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
-            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_speed_ms": req.manual_wind_speed or 0.0,
             "wind_direction_deg": req.manual_wind_direction or 0.0,
-            "temperature_c":      None, "humidity_pct": None,
-            "description": "Manual override", "station": "manual", "source": "manual",
+            "temperature_c": None,
+            "humidity_pct": None,
+            "description": "Manual override",
+            "station": "manual",
+            "source": "manual",
         }
 
     # New continuous smoke propagation
@@ -643,11 +746,11 @@ async def compare_evacuation(
     cy = graph_to_cytoscape(G_sim)
 
     return {
-        "fire_location":      req.fire_location,
-        "weather":            weather,
-        "comparison":         comparison,
-        "smoke_annotations":  smoke_annotations,
-        "graph_state":        cy,
+        "fire_location": req.fire_location,
+        "weather": weather,
+        "comparison": comparison,
+        "smoke_annotations": smoke_annotations,
+        "graph_state": cy,
     }
 
 
@@ -655,11 +758,12 @@ async def compare_evacuation(
 # Fire spread endpoint (physics-based Dijkstra spread model)
 # ---------------------------------------------------------------------------
 
+
 class FireSpreadRequest(BaseModel):
-    fire_node:             str
-    use_weather_wind:      bool           = True
-    manual_wind_direction: Optional[float] = None
-    manual_wind_speed:     Optional[float] = None
+    fire_node: str
+    use_weather_wind: bool = True
+    manual_wind_direction: float | None = None
+    manual_wind_speed: float | None = None
 
 
 @router.post("/{building_id}/fire/spread")
@@ -695,13 +799,13 @@ async def fire_spread_endpoint(
         weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
-            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_speed_ms": req.manual_wind_speed or 0.0,
             "wind_direction_deg": req.manual_wind_direction or 0.0,
-            "temperature_c":      None,
-            "humidity_pct":       None,
-            "description":        "Manual override",
-            "station":            "manual",
-            "source":             "manual",
+            "temperature_c": None,
+            "humidity_pct": None,
+            "description": "Manual override",
+            "station": "manual",
+            "source": "manual",
         }
 
     result = compute_fire_spread(
@@ -712,17 +816,17 @@ async def fire_spread_endpoint(
     )
 
     nodes_list = fire_spread_to_cytoscape(result["reach_time"])
-    max_time   = max((item["reach_time"] for item in nodes_list), default=0.0)
+    max_time = max((item["reach_time"] for item in nodes_list), default=0.0)
 
     return {
-        "fire_node":          req.fire_node,
+        "fire_node": req.fire_node,
         "wind_direction_deg": weather["wind_direction_deg"],
-        "wind_speed_ms":      weather["wind_speed_ms"],
-        "reach_time":         result["reach_time"],
-        "spread_order":       result["spread_order"],
-        "unreachable":        result["unreachable"],
-        "nodes":              nodes_list,
-        "max_time":           round(max_time, 2),
+        "wind_speed_ms": weather["wind_speed_ms"],
+        "reach_time": result["reach_time"],
+        "spread_order": result["spread_order"],
+        "unreachable": result["unreachable"],
+        "nodes": nodes_list,
+        "max_time": round(max_time, 2),
     }
 
 
@@ -730,11 +834,12 @@ async def fire_spread_endpoint(
 # Smoke propagation endpoint (Feature 2)
 # ---------------------------------------------------------------------------
 
+
 class SmokePropagateRequest(BaseModel):
-    fire_node:         str
-    use_weather_wind:  bool  = True
-    manual_wind_direction: Optional[float] = None
-    manual_wind_speed:     Optional[float] = None
+    fire_node: str
+    use_weather_wind: bool = True
+    manual_wind_direction: float | None = None
+    manual_wind_speed: float | None = None
 
 
 @router.post("/{building_id}/smoke/propagate")
@@ -767,7 +872,7 @@ async def propagate_smoke(
         weather = await fetch_weather(building.tmd_station_id)
     else:
         weather = {
-            "wind_speed_ms":      req.manual_wind_speed or 0.0,
+            "wind_speed_ms": req.manual_wind_speed or 0.0,
             "wind_direction_deg": req.manual_wind_direction or 0.0,
             "source": "manual",
         }
@@ -783,10 +888,10 @@ async def propagate_smoke(
     blocked = [a for a in annotations if a["blocked"]]
 
     return {
-        "fire_node":          req.fire_node,
+        "fire_node": req.fire_node,
         "wind_direction_deg": weather["wind_direction_deg"],
-        "wind_speed_ms":      weather["wind_speed_ms"],
-        "smoke_annotations":  annotations,
-        "blocked_edges":      blocked,
-        "blocked_count":      len(blocked),
+        "wind_speed_ms": weather["wind_speed_ms"],
+        "smoke_annotations": annotations,
+        "blocked_edges": blocked,
+        "blocked_count": len(blocked),
     }

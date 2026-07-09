@@ -87,7 +87,9 @@ def test_health_is_public(client):
 
 def test_list_buildings_with_auth(client):
     client.post("/auth/register", json={"email": "ad@ad.co", "password": "abcdefgh"})
-    tok = client.post("/auth/login", json={"email": "ad@ad.co", "password": "abcdefgh"}).json()["access_token"]
+    tok = client.post("/auth/login", json={"email": "ad@ad.co", "password": "abcdefgh"}).json()[
+        "access_token"
+    ]
     r = client.get("/buildings", headers={"Authorization": f"Bearer {tok}"})
     assert r.status_code == 200
     body = r.json()
@@ -97,7 +99,9 @@ def test_list_buildings_with_auth(client):
 
 def test_create_building_works_with_token(client):
     client.post("/auth/register", json={"email": "ad@ad.co", "password": "abcdefgh"})
-    tok = client.post("/auth/login", json={"email": "ad@ad.co", "password": "abcdefgh"}).json()["access_token"]
+    tok = client.post("/auth/login", json={"email": "ad@ad.co", "password": "abcdefgh"}).json()[
+        "access_token"
+    ]
     r = client.post(
         "/buildings",
         json={"name": "Auth'd"},

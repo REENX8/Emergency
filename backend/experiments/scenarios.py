@@ -17,12 +17,11 @@ from __future__ import annotations
 
 import copy
 import random
-from typing import Callable
+from collections.abc import Callable
 
 import networkx as nx
 
 from graph_builder import calculate_edge_weight
-
 
 ScenarioFn = Callable[[nx.Graph, float, random.Random], nx.Graph]
 
@@ -37,6 +36,8 @@ def wind_speed(G: nx.Graph, value: float, _rng: random.Random) -> nx.Graph:
     Gx = copy.deepcopy(G)
     factor = _wind_speed_factor(value)
     for _u, _v, data in Gx.edges(data=True):
+        if data.get("smoke_blocked"):
+            continue  # blocked by a live smoke incident — never reopen
         smoke = float(data.get("smoke_level", 0.0)) * factor
         smoke = min(1.0, smoke)
         data["smoke_level"] = smoke
@@ -56,6 +57,8 @@ def fire_severity(G: nx.Graph, value: float, _rng: random.Random) -> nx.Graph:
     Gx = copy.deepcopy(G)
     sev = max(0.0, min(1.0, float(value)))
     for _u, _v, data in Gx.edges(data=True):
+        if data.get("smoke_blocked"):
+            continue  # blocked by a live smoke incident — never reopen
         smoke = float(data.get("smoke_level", 0.0)) * sev
         data["smoke_level"] = smoke
         if smoke >= 0.9:
@@ -75,6 +78,8 @@ def crowd_density(G: nx.Graph, value: float, _rng: random.Random) -> nx.Graph:
     Gx = copy.deepcopy(G)
     density = max(0.0, min(0.99, float(value)))
     for u, v, data in Gx.edges(data=True):
+        if data.get("smoke_blocked"):
+            continue  # blocked by a live smoke incident — never reopen
         u_type = Gx.nodes[u].get("type", "")
         v_type = Gx.nodes[v].get("type", "")
         if "room" in (u_type, v_type):
@@ -94,7 +99,7 @@ def fire_location(G: nx.Graph, _value: float, _rng: random.Random) -> nx.Graph:
 
 
 REGISTRY: dict[str, ScenarioFn] = {
-    "wind_speed":    wind_speed,
+    "wind_speed": wind_speed,
     "fire_severity": fire_severity,
     "crowd_density": crowd_density,
     "fire_location": fire_location,

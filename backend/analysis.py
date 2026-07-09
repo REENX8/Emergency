@@ -8,17 +8,16 @@ All functions operate on a NetworkX graph G already loaded from the database
 
 import csv
 import io
-import math
 import time
-import copy
+
 import networkx as nx
 
-from pathfinding import find_all_exit_routes, compare_algorithms
-
+from pathfinding import find_all_exit_routes
 
 # ---------------------------------------------------------------------------
 # 1. Connectivity check
 # ---------------------------------------------------------------------------
+
 
 def check_connectivity(
     G: nx.Graph,
@@ -40,29 +39,27 @@ def check_connectivity(
         }
     """
     G_test = G.copy()
-    for u, v in (blocked_edges or []):
+    for u, v in blocked_edges or []:
         if G_test.has_edge(u, v):
             G_test.remove_edge(u, v)
 
     components = list(nx.connected_components(G_test))
     components.sort(key=len, reverse=True)  # largest first
 
-    main = components[0] if components else set()
-    unreachable = sorted(
-        [n for comp in components[1:] for n in comp]
-    )
+    unreachable = sorted([n for comp in components[1:] for n in comp])
 
     return {
-        "is_connected":     len(components) <= 1,
-        "num_components":   len(components),
+        "is_connected": len(components) <= 1,
+        "num_components": len(components),
         "unreachable_nodes": unreachable,
-        "components":       [sorted(c) for c in components],
+        "components": [sorted(c) for c in components],
     }
 
 
 # ---------------------------------------------------------------------------
 # 2. Bottleneck detection
 # ---------------------------------------------------------------------------
+
 
 def find_bottlenecks(G: nx.Graph) -> dict:
     """
@@ -82,7 +79,7 @@ def find_bottlenecks(G: nx.Graph) -> dict:
         }
     """
     bridge_edges = list(nx.bridges(G)) if G.number_of_nodes() > 1 else []
-    art_points   = list(nx.articulation_points(G)) if G.number_of_nodes() > 1 else []
+    art_points = list(nx.articulation_points(G)) if G.number_of_nodes() > 1 else []
 
     # Minimum edge cut (may raise if graph is empty or disconnected)
     min_cut: list[tuple[str, str]] = []
@@ -99,17 +96,18 @@ def find_bottlenecks(G: nx.Graph) -> dict:
     severity = round(len(bridge_edges) / n_edges, 4)
 
     return {
-        "bridge_edges":        [list(e) for e in bridge_edges],
+        "bridge_edges": [list(e) for e in bridge_edges],
         "articulation_points": art_points,
-        "min_edge_cut_size":   min_cut_size,
-        "min_edge_cut":        [list(e) for e in min_cut],
-        "severity":            severity,
+        "min_edge_cut_size": min_cut_size,
+        "min_edge_cut": [list(e) for e in min_cut],
+        "severity": severity,
     }
 
 
 # ---------------------------------------------------------------------------
 # 3. Safety score
 # ---------------------------------------------------------------------------
+
 
 def compute_safety_score(G: nx.Graph) -> dict:
     """
@@ -131,7 +129,8 @@ def compute_safety_score(G: nx.Graph) -> dict:
 
     if n_nodes == 0:
         return {
-            "score": 0.0, "grade": "F",
+            "score": 0.0,
+            "grade": "F",
             "factors": {
                 "exit_coverage": 0.0,
                 "min_cut_factor": 0.0,
@@ -153,11 +152,7 @@ def compute_safety_score(G: nx.Graph) -> dict:
     except Exception:
         pass
 
-    p_total = sum(
-        d.get("capacity", 0)
-        for _, d in G.nodes(data=True)
-        if d.get("type") != "exit"
-    )
+    p_total = sum(d.get("capacity", 0) for _, d in G.nodes(data=True) if d.get("type") != "exit")
     min_cut_factor = min(1.0, min_cut_size / (p_total / 10)) if p_total > 0 else 0.0
 
     # Factor 3: edge connectivity normalised by target fault tolerance
@@ -168,33 +163,35 @@ def compute_safety_score(G: nx.Graph) -> dict:
     edge_connectivity_ratio = edge_conn / (k + 1)
 
     score = round(
-        exit_coverage           * 40 +
-        min_cut_factor          * 30 +
-        edge_connectivity_ratio * 30,
+        exit_coverage * 40 + min_cut_factor * 30 + edge_connectivity_ratio * 30,
         1,
     )
 
     grade = (
-        "A" if score >= 80 else
-        "B" if score >= 65 else
-        "C" if score >= 50 else
-        "D" if score >= 35 else
-        "F"
+        "A"
+        if score >= 80
+        else "B"
+        if score >= 65
+        else "C"
+        if score >= 50
+        else "D"
+        if score >= 35
+        else "F"
     )
 
     return {
         "score": score,
         "grade": grade,
         "factors": {
-            "exit_coverage":            round(exit_coverage, 4),
-            "min_cut_factor":           round(min_cut_factor, 4),
-            "edge_connectivity_ratio":  round(edge_connectivity_ratio, 4),
+            "exit_coverage": round(exit_coverage, 4),
+            "min_cut_factor": round(min_cut_factor, 4),
+            "edge_connectivity_ratio": round(edge_connectivity_ratio, 4),
         },
         "details": {
-            "n_nodes":           n_nodes,
-            "n_exits":           n_exits,
-            "p_total":           p_total,
-            "min_cut_size":      min_cut_size,
+            "n_nodes": n_nodes,
+            "n_exits": n_exits,
+            "p_total": p_total,
+            "min_cut_size": min_cut_size,
             "edge_connectivity": edge_conn,
         },
     }
@@ -203,6 +200,7 @@ def compute_safety_score(G: nx.Graph) -> dict:
 # ---------------------------------------------------------------------------
 # 4. Max-flow multi-exit distribution
 # ---------------------------------------------------------------------------
+
 
 def compute_maxflow_distribution(
     G: nx.Graph,
@@ -226,7 +224,7 @@ def compute_maxflow_distribution(
         }
     """
     SOURCE = "__SOURCE__"
-    SINK   = "__SINK__"
+    SINK = "__SINK__"
 
     # Build directed capacity graph
     H = nx.DiGraph()
@@ -278,17 +276,20 @@ def compute_maxflow_distribution(
             if H.has_edge(u, v):
                 cap = H[u][v]["capacity"]
                 if cap > 0 and (flow / cap) >= 0.9:
-                    bottleneck_edges.append({
-                        "u": u, "v": v,
-                        "flow": int(flow),
-                        "capacity": cap,
-                        "utilisation": round(flow / cap, 3),
-                    })
+                    bottleneck_edges.append(
+                        {
+                            "u": u,
+                            "v": v,
+                            "flow": int(flow),
+                            "capacity": cap,
+                            "utilisation": round(flow / cap, 3),
+                        }
+                    )
 
     return {
-        "total_flow":            int(flow_value),
-        "flow_per_exit":         flow_per_exit,
-        "bottleneck_edges":      bottleneck_edges,
+        "total_flow": int(flow_value),
+        "flow_per_exit": flow_per_exit,
+        "bottleneck_edges": bottleneck_edges,
         "recommended_assignment": flow_per_exit,  # same data, clearer name
     }
 
@@ -296,6 +297,7 @@ def compute_maxflow_distribution(
 # ---------------------------------------------------------------------------
 # 5. Automated experiment runner
 # ---------------------------------------------------------------------------
+
 
 def run_experiments(
     G: nx.Graph,
@@ -331,11 +333,11 @@ def run_experiments(
     G2 = G.copy()
     if blocked_exit and blocked_exit in G2:
         G2.remove_node(blocked_exit)
-    exits2 = [e for e in exits if e in G2]
     scenarios.append((f"Exit blocked ({blocked_exit})", G2))
 
     # Scenario 3: All rooms at 80% crowd density
     from graph_builder import calculate_edge_weight
+
     G3 = G.copy()
     for u, v, data in G3.edges(data=True):
         u_type = G3.nodes[u].get("type", "")
@@ -355,14 +357,16 @@ def run_experiments(
         s_exits = [e for e in exits if e in Gs]
         if fire_location not in Gs:
             for algo in ("dijkstra", "astar"):
-                results.append({
-                    "scenario":        scenario_name,
-                    "algorithm":       algo,
-                    "avg_time_s":      None,
-                    "nodes_visited":   0,
-                    "best_path_hops":  None,
-                    "exec_time_ms":    0.0,
-                })
+                results.append(
+                    {
+                        "scenario": scenario_name,
+                        "algorithm": algo,
+                        "avg_time_s": None,
+                        "nodes_visited": 0,
+                        "best_path_hops": None,
+                        "exec_time_ms": 0.0,
+                    }
+                )
             continue
 
         for algo in ("dijkstra", "astar"):
@@ -373,26 +377,34 @@ def run_experiments(
             reachable = [r for r in routes if r["reachable"]]
             avg_time = (
                 round(sum(r["cost_seconds"] for r in reachable) / len(reachable), 2)
-                if reachable else None
+                if reachable
+                else None
             )
             total_nodes = sum(r["nodes_visited"] for r in routes)
             best_hops = (
-                len(reachable[0]["path"]) - 1
-                if reachable and reachable[0]["path"] else None
+                len(reachable[0]["path"]) - 1 if reachable and reachable[0]["path"] else None
             )
 
-            results.append({
-                "scenario":       scenario_name,
-                "algorithm":      algo,
-                "avg_time_s":     avg_time,
-                "nodes_visited":  total_nodes,
-                "best_path_hops": best_hops,
-                "exec_time_ms":   exec_ms,
-            })
+            results.append(
+                {
+                    "scenario": scenario_name,
+                    "algorithm": algo,
+                    "avg_time_s": avg_time,
+                    "nodes_visited": total_nodes,
+                    "best_path_hops": best_hops,
+                    "exec_time_ms": exec_ms,
+                }
+            )
 
     # Generate CSV
-    fieldnames = ["scenario", "algorithm", "avg_time_s",
-                  "nodes_visited", "best_path_hops", "exec_time_ms"]
+    fieldnames = [
+        "scenario",
+        "algorithm",
+        "avg_time_s",
+        "nodes_visited",
+        "best_path_hops",
+        "exec_time_ms",
+    ]
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=fieldnames)
     writer.writeheader()
@@ -401,6 +413,6 @@ def run_experiments(
 
     return {
         "fire_location": fire_location,
-        "results":       results,
-        "csv":           csv_string,
+        "results": results,
+        "csv": csv_string,
     }

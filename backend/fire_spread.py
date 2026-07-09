@@ -18,8 +18,9 @@ Algorithm: Dijkstra from fire source, minimize cumulative t_spread.
 Edges with weight==inf (smoke-blocked) are skipped.
 """
 
-import math
 import heapq
+import math
+
 import networkx as nx
 
 # Base fire spread speed (m/s)
@@ -27,10 +28,10 @@ V_BASE = 0.02
 
 # Type multipliers for destination node type
 TYPE_MULT = {
-    "room":     1.0,
+    "room": 1.0,
     "corridor": 1.5,
-    "stair":    2.5,
-    "exit":     0.5,
+    "stair": 2.5,
+    "exit": 0.5,
 }
 DEFAULT_TYPE_MULT = 1.0
 
@@ -44,8 +45,10 @@ def _width_factor(width_m: float) -> float:
 
 
 def _wind_factor(
-    ux: float, uy: float,
-    vx: float, vy: float,
+    ux: float,
+    uy: float,
+    vx: float,
+    vy: float,
     wind_direction_deg: float,
     wind_speed_ms: float,
 ) -> float:
@@ -67,7 +70,8 @@ def _wind_factor(
 
 def _spread_time(
     G: nx.Graph,
-    u: str, v: str,
+    u: str,
+    v: str,
     wind_direction_deg: float,
     wind_speed_ms: float,
 ) -> float:
@@ -75,14 +79,14 @@ def _spread_time(
     if edge_data.get("weight", 0) == float("inf"):
         return float("inf")
     distance_m = edge_data.get("distance", 1.0)
-    width_m    = edge_data.get("width",    2.0)
-    dest_type  = G.nodes[v].get("type", "room")
+    width_m = edge_data.get("width", 2.0)
+    dest_type = G.nodes[v].get("type", "room")
     ux = G.nodes[u].get("x", 0)
     uy = G.nodes[u].get("y", 0)
     vx = G.nodes[v].get("x", 0)
     vy = G.nodes[v].get("y", 0)
-    tm  = _type_mult(dest_type)
-    wf  = _width_factor(width_m)
+    tm = _type_mult(dest_type)
+    wf = _width_factor(width_m)
     wnd = _wind_factor(ux, uy, vx, vy, wind_direction_deg, wind_speed_ms)
     v_fire = V_BASE * tm * wf * wnd
     if v_fire <= 0:
@@ -117,7 +121,7 @@ def compute_fire_spread(
                 dist[v] = new_t
                 heapq.heappush(heap, (new_t, v))
 
-    reachable   = {n: t for n, t in dist.items() if t < float("inf")}
+    reachable = {n: t for n, t in dist.items() if t < float("inf")}
     unreachable = [n for n in G.nodes() if n not in reachable]
     spread_order = sorted(reachable.keys(), key=lambda n: reachable[n])
 

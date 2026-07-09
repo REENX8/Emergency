@@ -1,12 +1,12 @@
 """routers/auth.py — register, login, /me, admin role management."""
 
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
+from audit import audit
 from auth import (
     create_access_token,
     get_current_user,
@@ -14,7 +14,6 @@ from auth import (
     require_role,
     verify_password,
 )
-from audit import audit
 from database import get_db
 from models import User
 from rate_limit import limiter
@@ -25,26 +24,28 @@ VALID_ROLES = {"admin", "operator", "viewer"}
 
 
 class RegisterRequest(BaseModel):
-    email:    EmailStr = Field(..., json_schema_extra={"example": "user@example.com"})
-    password: str      = Field(..., min_length=8, max_length=200,
-                               json_schema_extra={"example": "correct horse battery"})
+    email: EmailStr = Field(..., json_schema_extra={"example": "user@example.com"})
+    password: str = Field(
+        ..., min_length=8, max_length=200, json_schema_extra={"example": "correct horse battery"}
+    )
 
 
 class LoginRequest(BaseModel):
-    email:    EmailStr = Field(..., json_schema_extra={"example": "user@example.com"})
-    password: str      = Field(..., max_length=200,
-                               json_schema_extra={"example": "correct horse battery"})
+    email: EmailStr = Field(..., json_schema_extra={"example": "user@example.com"})
+    password: str = Field(
+        ..., max_length=200, json_schema_extra={"example": "correct horse battery"}
+    )
 
 
 class TokenResponse(BaseModel):
     access_token: str
-    token_type:   str = "bearer"
+    token_type: str = "bearer"
 
 
 class UserResponse(BaseModel):
-    id:         int
-    email:      str
-    role:       str
+    id: int
+    email: str
+    role: str
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -69,8 +70,14 @@ def register(request: Request, req: RegisterRequest, db: Session = Depends(get_d
     db.add(user)
     db.commit()
     db.refresh(user)
-    audit(db, user, "user.register", target_type="user", target_id=user.id,
-          payload={"email": user.email, "role": user.role, "bootstrap_admin": is_first})
+    audit(
+        db,
+        user,
+        "user.register",
+        target_type="user",
+        target_id=user.id,
+        payload={"email": user.email, "role": user.role, "bootstrap_admin": is_first},
+    )
     return user
 
 
@@ -90,8 +97,9 @@ def me(current: User = Depends(get_current_user)):
     return current
 
 
-@router.get("/users", response_model=list[UserResponse],
-            dependencies=[Depends(require_role("admin"))])
+@router.get(
+    "/users", response_model=list[UserResponse], dependencies=[Depends(require_role("admin"))]
+)
 def list_users(db: Session = Depends(get_db)):
     return db.query(User).order_by(User.created_at.desc()).all()
 
@@ -117,6 +125,12 @@ def update_user_role(
     target.role = payload.role
     db.commit()
     db.refresh(target)
-    audit(db, actor, "user.role.change", target_type="user", target_id=target.id,
-          payload={"from": old_role, "to": payload.role, "target_email": target.email})
+    audit(
+        db,
+        actor,
+        "user.role.change",
+        target_type="user",
+        target_id=target.id,
+        payload={"from": old_role, "to": payload.role, "target_email": target.email},
+    )
     return target

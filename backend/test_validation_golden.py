@@ -14,7 +14,6 @@ import pytest
 from graph_builder import calculate_edge_weight
 from pathfinding import estimate_evacuation_time
 
-
 GOLDEN_DIR = os.path.join(os.path.dirname(__file__), "validation")
 
 
@@ -28,16 +27,18 @@ def _graph_from_json(spec: dict) -> nx.Graph:
     for n in spec["nodes"]:
         G.add_node(
             n["node_key"],
-            type=n["type"], x=n["x"], y=n["y"],
-            floor=n["floor_number"], capacity=n.get("capacity", 0),
+            type=n["type"],
+            x=n["x"],
+            y=n["y"],
+            floor=n["floor_number"],
+            capacity=n.get("capacity", 0),
         )
     for e in spec["edges"]:
-        weight = calculate_edge_weight(
-            e["distance_m"], 0.0, 0.0, e.get("is_stair", False)
-        )
+        weight = calculate_edge_weight(e["distance_m"], 0.0, 0.0, e.get("is_stair", False))
         base = weight
         G.add_edge(
-            e["u_key"], e["v_key"],
+            e["u_key"],
+            e["v_key"],
             distance=e["distance_m"],
             width=e["width_m"],
             is_stair=e.get("is_stair", False),
@@ -55,7 +56,6 @@ def test_golden_case_matches_expected(filename):
     G = _graph_from_json(spec)
     exits = [n["node_key"] for n in spec["nodes"] if n["type"] == "exit"]
     rooms = list(spec["expected"]["evacuation_times_s"].keys())
-    fire = spec["expected"]["fire_location"]
     tolerance = float(spec["expected"]["tolerance_s"])
 
     result = estimate_evacuation_time(G, rooms, exits, "dijkstra")

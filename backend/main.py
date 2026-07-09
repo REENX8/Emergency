@@ -15,6 +15,7 @@ Run with:
   uvicorn main:app --reload --port 8000
 """
 
+import asyncio
 import json
 import logging
 import logging.config
@@ -22,9 +23,9 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import httpx
@@ -33,34 +34,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-
-import realtime
-
-from database import init_db, get_db_health
-import storage
-import weather as weather_mod
-from weather import fetch_weather
-from rate_limit import limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from routers import buildings as buildings_router
-from routers import incidents as incidents_router
+
+import realtime
+import storage
+import weather as weather_mod
+from database import get_db_health, init_db
+from rate_limit import limiter
 from routers import analysis as analysis_router
 from routers import auth as auth_router
-
+from routers import buildings as buildings_router
+from routers import incidents as incidents_router
+from weather import fetch_weather
 
 # ---------------------------------------------------------------------------
 # Structured JSON logging
 # ---------------------------------------------------------------------------
 
+
 class _JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log = {
-            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
-            "level":   record.levelname,
-            "logger":  record.name,
-            "msg":     record.getMessage(),
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
         }
         if record.exc_info:
             log["exc"] = self.formatException(record.exc_info)
@@ -86,12 +86,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Initialise DB tables and a pooled httpx client; close pool on shutdown."""
     init_db()
+    # Register the main loop so sync route handlers (threadpool) can schedule
+    # WebSocket broadcasts via realtime.broadcast_sync.
+    realtime.set_event_loop(asyncio.get_running_loop())
     async with httpx.AsyncClient(timeout=5.0) as client:
         weather_mod.set_http_client(client)
         try:
             yield
         finally:
             weather_mod.set_http_client(None)
+            realtime.set_event_loop(None)
 
 
 app = FastAPI(
@@ -117,18 +121,18 @@ _wildcard = _allowed_origins == ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_credentials=not _wildcard,   # credentials=True incompatible with "*"
+    allow_credentials=not _wildcard,  # credentials=True incompatible with "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 class WebVitalsMetric(BaseModel):
-    name:    str
-    value:   float
-    rating:  Optional[str] = None
-    id:      Optional[str] = None
-    navType: Optional[str] = None
+    name: str
+    value: float
+    rating: str | None = None
+    id: str | None = None
+    navType: str | None = None
 
 
 @app.middleware("http")
@@ -141,7 +145,7 @@ async def _request_context_middleware(request: Request, call_next):
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
-    response.headers["X-Request-ID"]      = request_id
+    response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-Ms"] = f"{elapsed_ms:.1f}"
 
     log_extra = {"request_id": request_id}
@@ -173,18 +177,23 @@ async def _security_headers_middleware(request: Request, call_next):
         )
     return response
 
+
 # Serve uploaded floor plan images (local dev only — Supabase mode uses CDN URLs)
 if not storage.is_supabase_configured():
     UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+
 @app.post("/metrics/web-vitals", status_code=204, tags=["metrics"])
 async def record_web_vitals(metric: WebVitalsMetric):
     """Lightweight sink for Core Web Vitals (CLS/FCP/INP/LCP/TTFB). Logs only."""
     logger.info(
         "vitals %s=%.1f rating=%s nav=%s",
-        metric.name, metric.value, metric.rating or "-", metric.navType or "-",
+        metric.name,
+        metric.value,
+        metric.rating or "-",
+        metric.navType or "-",
     )
     return None
 
@@ -212,14 +221,15 @@ app.include_router(analysis_router.router)
 # Top-level endpoints
 # ---------------------------------------------------------------------------
 
+
 @app.get("/health", tags=["meta"])
 def health():
     """Liveness + readiness probe — checks DB connectivity."""
     db_status, db_detail = get_db_health()
     payload = {
-        "status":  "ok" if db_status else "degraded",
+        "status": "ok" if db_status else "degraded",
         "service": "evacuation-simulation",
-        "db":      "ok" if db_status else f"error: {db_detail}",
+        "db": "ok" if db_status else f"error: {db_detail}",
     }
     status_code = 200 if db_status else 503
     return JSONResponse(content=payload, status_code=status_code)
@@ -235,11 +245,12 @@ async def get_weather():
 # WebSocket — per-building event stream (Phase 3 realtime collaboration)
 # ---------------------------------------------------------------------------
 
+
 @app.websocket("/buildings/{building_id}/ws")
 async def building_events(
     websocket: WebSocket,
     building_id: int,
-    token: Optional[str] = Query(default=None),
+    token: str | None = Query(default=None),
 ):
     """Subscribe to incident / node / edge events for a building.
 
@@ -253,4 +264,5 @@ async def building_events(
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

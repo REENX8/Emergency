@@ -13,9 +13,8 @@ A single trial = one (variable value × algorithm × repeat) run. We record:
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from statistics import median
-from typing import Optional
 
 import networkx as nx
 
@@ -24,23 +23,23 @@ from pathfinding import find_all_exit_routes
 
 @dataclass
 class TrialMetric:
-    variable:        str
-    value:           float
-    algorithm:       str
-    repeat:          int
-    avg_time_s:      Optional[float]
-    p50_time_s:      Optional[float]
-    p95_time_s:      Optional[float]
-    nodes_visited:   int
-    best_path_hops:  Optional[int]
-    exec_time_ms:    float
+    variable: str
+    value: float
+    algorithm: str
+    repeat: int
+    avg_time_s: float | None
+    p50_time_s: float | None
+    p95_time_s: float | None
+    nodes_visited: int
+    best_path_hops: int | None
+    exec_time_ms: float
     reachable_exits: int
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
-def _percentile(values: list[float], pct: float) -> Optional[float]:
+def _percentile(values: list[float], pct: float) -> float | None:
     if not values:
         return None
     s = sorted(values)
@@ -62,9 +61,16 @@ def run_trial(
     """Run one trial — pathfinder + metric collection. Pure."""
     if fire_location not in G:
         return TrialMetric(
-            variable=variable, value=value, algorithm=algorithm, repeat=repeat,
-            avg_time_s=None, p50_time_s=None, p95_time_s=None,
-            nodes_visited=0, best_path_hops=None, exec_time_ms=0.0,
+            variable=variable,
+            value=value,
+            algorithm=algorithm,
+            repeat=repeat,
+            avg_time_s=None,
+            p50_time_s=None,
+            p95_time_s=None,
+            nodes_visited=0,
+            best_path_hops=None,
+            exec_time_ms=0.0,
             reachable_exits=0,
         )
 
@@ -77,13 +83,13 @@ def run_trial(
     times = [float(r["cost_seconds"]) for r in reachable]
     avg = round(sum(times) / len(times), 2) if times else None
     total_nodes = sum(int(r["nodes_visited"]) for r in routes)
-    best_hops = (
-        len(reachable[0]["path"]) - 1
-        if reachable and reachable[0].get("path") else None
-    )
+    best_hops = len(reachable[0]["path"]) - 1 if reachable and reachable[0].get("path") else None
 
     return TrialMetric(
-        variable=variable, value=value, algorithm=algorithm, repeat=repeat,
+        variable=variable,
+        value=value,
+        algorithm=algorithm,
+        repeat=repeat,
         avg_time_s=avg,
         p50_time_s=round(median(times), 2) if times else None,
         p95_time_s=_percentile(times, 95),

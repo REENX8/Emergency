@@ -94,8 +94,7 @@ def test_admin_can_promote_user(client):
     admin_h = _login(client, "admin@x.co")
     second = _register(client, "op@x.co")
 
-    r = client.patch(f"/auth/users/{second['id']}/role",
-                     json={"role": "admin"}, headers=admin_h)
+    r = client.patch(f"/auth/users/{second['id']}/role", json={"role": "admin"}, headers=admin_h)
     assert r.status_code == 200
     assert r.json()["role"] == "admin"
 
@@ -104,8 +103,7 @@ def test_cannot_demote_last_admin(client):
     _register(client, "admin@x.co")
     admin_h = _login(client, "admin@x.co")
     me = client.get("/auth/me", headers=admin_h).json()
-    r = client.patch(f"/auth/users/{me['id']}/role",
-                     json={"role": "operator"}, headers=admin_h)
+    r = client.patch(f"/auth/users/{me['id']}/role", json={"role": "operator"}, headers=admin_h)
     assert r.status_code == 400
 
 
@@ -113,8 +111,7 @@ def test_viewer_cannot_create_building(client):
     _register(client, "admin@x.co")
     admin_h = _login(client, "admin@x.co")
     viewer = _register(client, "viewer@x.co")
-    client.patch(f"/auth/users/{viewer['id']}/role",
-                 json={"role": "viewer"}, headers=admin_h)
+    client.patch(f"/auth/users/{viewer['id']}/role", json={"role": "viewer"}, headers=admin_h)
 
     viewer_h = _login(client, "viewer@x.co")
     r = client.post("/buildings", json={"name": "X"}, headers=viewer_h)
@@ -125,8 +122,7 @@ def test_viewer_can_list_buildings(client):
     _register(client, "admin@x.co")
     admin_h = _login(client, "admin@x.co")
     viewer = _register(client, "viewer@x.co")
-    client.patch(f"/auth/users/{viewer['id']}/role",
-                 json={"role": "viewer"}, headers=admin_h)
+    client.patch(f"/auth/users/{viewer['id']}/role", json={"role": "viewer"}, headers=admin_h)
     client.post("/buildings", json={"name": "B1"}, headers=admin_h)
 
     viewer_h = _login(client, "viewer@x.co")
@@ -148,11 +144,12 @@ def test_anonymous_can_report_incident(client):
     _register(client, "admin@x.co")
     admin_h = _login(client, "admin@x.co")
     bid = client.post("/buildings", json={"name": "B1"}, headers=admin_h).json()["id"]
-    client.post(f"/buildings/{bid}/nodes",
-                json={"node_key": "r1", "type": "room"}, headers=admin_h)
+    client.post(f"/buildings/{bid}/nodes", json={"node_key": "r1", "type": "room"}, headers=admin_h)
 
-    r = client.post(f"/buildings/{bid}/incidents",
-                    json={"node_key": "r1", "incident_type": "fire", "severity": 0.7})
+    r = client.post(
+        f"/buildings/{bid}/incidents",
+        json={"node_key": "r1", "incident_type": "fire", "severity": 0.7},
+    )
     assert r.status_code == 201
 
 
@@ -160,9 +157,9 @@ def test_anonymous_cannot_resolve_incident(client):
     _register(client, "admin@x.co")
     admin_h = _login(client, "admin@x.co")
     bid = client.post("/buildings", json={"name": "B1"}, headers=admin_h).json()["id"]
-    client.post(f"/buildings/{bid}/nodes",
-                json={"node_key": "r1", "type": "room"}, headers=admin_h)
-    inc = client.post(f"/buildings/{bid}/incidents",
-                      json={"node_key": "r1", "incident_type": "fire"}).json()
+    client.post(f"/buildings/{bid}/nodes", json={"node_key": "r1", "type": "room"}, headers=admin_h)
+    inc = client.post(
+        f"/buildings/{bid}/incidents", json={"node_key": "r1", "incident_type": "fire"}
+    ).json()
     r = client.patch(f"/buildings/{bid}/incidents/{inc['id']}")
     assert r.status_code == 401

@@ -16,27 +16,60 @@ Both return the same path; A* is usually faster to compute in practice.
 import heapq
 import math
 import time
+
 import networkx as nx
-from typing import Optional
+
+# Fastest possible walking speed in the weight model (corridor, no crowd,
+# no smoke). Real edge weights are always >= distance_m / _WALK_SPEED.
+_WALK_SPEED = 1.4  # m/s
 
 
-# Walking speed used to convert Euclidean pixel distance to estimated seconds.
-# Pixels-per-metre ratio in our layout (see graph_builder.py): ~6 px/m
-_PX_PER_METRE = 6.0
-_WALK_SPEED = 1.4   # m/s
+def _px_per_metre_upper_bound(G: nx.Graph) -> float:
+    """
+    Largest pixels-per-metre ratio observed on any edge of this graph.
+
+    Converting a straight-line pixel distance to metres with this ratio
+    UNDERestimates the true metre distance, which keeps the A* heuristic
+    admissible regardless of the drawing scale (layouts are not all 6 px/m,
+    and stored `distance_m` is independent of pixel geometry).
+
+    Cached on G.graph — topology mutations rebuild the graph, so per-graph
+    caching is safe.
+    """
+    cached = G.graph.get("_h_px_per_m")
+    if cached is not None:
+        return cached
+    ratio = 0.0
+    for u, v, data in G.edges(data=True):
+        d_m = float(data.get("distance", 0) or 0)
+        if d_m <= 0:
+            continue
+        px = math.hypot(
+            G.nodes[v].get("x", 0) - G.nodes[u].get("x", 0),
+            G.nodes[v].get("y", 0) - G.nodes[u].get("y", 0),
+        )
+        if px > 0:
+            ratio = max(ratio, px / d_m)
+    G.graph["_h_px_per_m"] = ratio
+    return ratio
 
 
 def _euclidean_heuristic(G: nx.Graph, u: str, v: str) -> float:
     """
-    Admissible heuristic: straight-line time between u and v.
-    Uses node x/y pixel positions converted to metres then to seconds.
-    h(u) ≤ actual cost always holds because walls/stairs add extra time.
+    Admissible heuristic: straight-line time between u and v in seconds.
+
+    Pixel distance is converted to metres with the per-graph max px/m ratio
+    (underestimates metres) and divided by the max walking speed
+    (underestimates time), so h(u) ≤ true cost always holds — A* stays
+    optimal and agrees with Dijkstra.
     """
+    ratio = _px_per_metre_upper_bound(G)
+    if ratio <= 0:
+        return 0.0  # no usable geometry — degrade to Dijkstra
     ux, uy = G.nodes[u]["x"], G.nodes[u]["y"]
     vx, vy = G.nodes[v]["x"], G.nodes[v]["y"]
     pixel_dist = math.hypot(vx - ux, vy - uy)
-    metres = pixel_dist / _PX_PER_METRE
-    return metres / _WALK_SPEED  # seconds
+    return (pixel_dist / ratio) / _WALK_SPEED  # seconds
 
 
 def _dijkstra_full(
@@ -52,7 +85,7 @@ def _dijkstra_full(
         return None, float("inf"), 0
 
     dist: dict[str, float] = {source: 0.0}
-    prev: dict[str, Optional[str]] = {source: None}
+    prev: dict[str, str | None] = {source: None}
     heap: list[tuple[float, str]] = [(0.0, source)]
     nodes_settled = 0
 
@@ -99,10 +132,8 @@ def _astar_full(
         return None, float("inf"), 0
 
     g_score: dict[str, float] = {source: 0.0}
-    prev: dict[str, Optional[str]] = {source: None}
-    heap: list[tuple[float, float, str]] = [
-        (_euclidean_heuristic(G, source, target), 0.0, source)
-    ]
+    prev: dict[str, str | None] = {source: None}
+    heap: list[tuple[float, float, str]] = [(_euclidean_heuristic(G, source, target), 0.0, source)]
     nodes_settled = 0
 
     while heap:
@@ -193,14 +224,16 @@ def find_all_exit_routes(
         if exit_node == source:
             continue
         path, cost, nodes_visited = fn(G, source, exit_node)
-        results.append({
-            "exit":          exit_node,
-            "path":          path or [],
-            "cost_seconds":  round(cost, 1) if cost != float("inf") else None,
-            "reachable":     path is not None,
-            "algorithm":     algorithm,
-            "nodes_visited": nodes_visited,
-        })
+        results.append(
+            {
+                "exit": exit_node,
+                "path": path or [],
+                "cost_seconds": round(cost, 1) if cost != float("inf") else None,
+                "reachable": path is not None,
+                "algorithm": algorithm,
+                "nodes_visited": nodes_visited,
+            }
+        )
 
     results.sort(key=lambda r: (not r["reachable"], r["cost_seconds"] or float("inf")))
     return results
@@ -224,11 +257,11 @@ def compare_algorithms(
     astar_ms = round((time.perf_counter() - t0) * 1000, 3)
 
     dijkstra_nodes = sum(r["nodes_visited"] for r in dijkstra_routes)
-    astar_nodes    = sum(r["nodes_visited"] for r in astar_routes)
+    astar_nodes = sum(r["nodes_visited"] for r in astar_routes)
 
     return {
         "dijkstra": dijkstra_routes,
-        "astar":    astar_routes,
+        "astar": astar_routes,
         "timing_ms": {"dijkstra": dijkstra_ms, "astar": astar_ms},
         "nodes_visited": {"dijkstra": dijkstra_nodes, "astar": astar_nodes},
     }

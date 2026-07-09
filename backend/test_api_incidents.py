@@ -39,20 +39,22 @@ def client():
 @pytest.fixture()
 def building_with_node(client):
     client.post("/auth/register", json={"email": "a@a.co", "password": "abcdefgh"})
-    tok = client.post("/auth/login",
-                       json={"email": "a@a.co", "password": "abcdefgh"}).json()["access_token"]
+    tok = client.post("/auth/login", json={"email": "a@a.co", "password": "abcdefgh"}).json()[
+        "access_token"
+    ]
     h = {"Authorization": f"Bearer {tok}"}
     bid = client.post("/buildings", json={"name": "B"}, headers=h).json()["id"]
-    client.post(f"/buildings/{bid}/nodes",
-                json={"node_key": "r1", "type": "room"}, headers=h)
+    client.post(f"/buildings/{bid}/nodes", json={"node_key": "r1", "type": "room"}, headers=h)
     return bid, h
 
 
 def test_anonymous_report_then_paginated_list(client, building_with_node):
     bid, _ = building_with_node
     for sev in [0.3, 0.5, 0.8]:
-        r = client.post(f"/buildings/{bid}/incidents",
-                        json={"node_key": "r1", "incident_type": "fire", "severity": sev})
+        r = client.post(
+            f"/buildings/{bid}/incidents",
+            json={"node_key": "r1", "incident_type": "fire", "severity": sev},
+        )
         assert r.status_code == 201
     body = client.get(f"/buildings/{bid}/incidents?limit=2").json()
     assert body["total"] == 3
@@ -62,29 +64,34 @@ def test_anonymous_report_then_paginated_list(client, building_with_node):
 
 def test_invalid_incident_type_rejected(client, building_with_node):
     bid, _ = building_with_node
-    r = client.post(f"/buildings/{bid}/incidents",
-                    json={"node_key": "r1", "incident_type": "monster"})
+    r = client.post(
+        f"/buildings/{bid}/incidents", json={"node_key": "r1", "incident_type": "monster"}
+    )
     assert r.status_code == 400
 
 
 def test_severity_bounds(client, building_with_node):
     bid, _ = building_with_node
-    r = client.post(f"/buildings/{bid}/incidents",
-                    json={"node_key": "r1", "incident_type": "fire", "severity": 1.5})
+    r = client.post(
+        f"/buildings/{bid}/incidents",
+        json={"node_key": "r1", "incident_type": "fire", "severity": 1.5},
+    )
     assert r.status_code == 422
 
 
 def test_unknown_node_rejected(client, building_with_node):
     bid, _ = building_with_node
-    r = client.post(f"/buildings/{bid}/incidents",
-                    json={"node_key": "ghost", "incident_type": "fire"})
+    r = client.post(
+        f"/buildings/{bid}/incidents", json={"node_key": "ghost", "incident_type": "fire"}
+    )
     assert r.status_code == 400
 
 
 def test_resolve_requires_operator(client, building_with_node):
     bid, h = building_with_node
-    inc = client.post(f"/buildings/{bid}/incidents",
-                      json={"node_key": "r1", "incident_type": "fire"}).json()
+    inc = client.post(
+        f"/buildings/{bid}/incidents", json={"node_key": "r1", "incident_type": "fire"}
+    ).json()
     # Without token
     assert client.patch(f"/buildings/{bid}/incidents/{inc['id']}").status_code == 401
     # With operator token

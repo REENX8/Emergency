@@ -9,7 +9,7 @@ Falls back to SQLite for local development.
 import os
 
 from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./evacuation.db")
 
@@ -27,8 +27,8 @@ if _is_sqlite:
 else:
     engine = create_engine(
         SQLALCHEMY_DATABASE_URL,
-        pool_pre_ping=True,      # detect stale connections (Supabase idle timeout)
-        pool_recycle=300,        # recycle connections every 5 min
+        pool_pre_ping=True,  # detect stale connections (Supabase idle timeout)
+        pool_recycle=300,  # recycle connections every 5 min
         connect_args={"sslmode": "require", "connect_timeout": 10},
     )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -60,7 +60,8 @@ def init_db():
     # Production deploys should run `alembic upgrade head` instead — this
     # create_all + ALTER fallbacks exist so tests + first-time dev runs work
     # without an Alembic env.
-    from models import Building, Floor, Node, Edge, Incident, User, AuditLog  # noqa: F401
+    from models import AuditLog, Building, Edge, Floor, Incident, Node, User  # noqa: F401
+
     Base.metadata.create_all(bind=engine)
     with engine.connect() as conn:
         for stmt in (

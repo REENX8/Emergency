@@ -18,7 +18,6 @@ from fastapi import Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-
 _ENABLED = os.getenv("RATE_LIMIT_ENABLED", "1") != "0"
 
 

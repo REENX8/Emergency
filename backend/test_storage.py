@@ -1,15 +1,16 @@
 """Tests for storage.py — local and Supabase backends."""
-import os
-import pytest
-import httpx
+
 import importlib
 
-import storage
+import httpx
+import pytest
 
+import storage
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _reload_storage(monkeypatch, supabase_url="", supabase_key=""):
     monkeypatch.setenv("SUPABASE_URL", supabase_url)
@@ -20,6 +21,7 @@ def _reload_storage(monkeypatch, supabase_url="", supabase_key=""):
 # ---------------------------------------------------------------------------
 # is_supabase_configured
 # ---------------------------------------------------------------------------
+
 
 def test_supabase_not_configured_by_default(monkeypatch):
     _reload_storage(monkeypatch)
@@ -39,6 +41,7 @@ def test_supabase_not_configured_with_only_url(monkeypatch):
 # ---------------------------------------------------------------------------
 # Local backend — _save_local / _delete_local
 # ---------------------------------------------------------------------------
+
 
 def test_save_local_creates_file(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "_UPLOAD_DIR", str(tmp_path))
@@ -77,6 +80,7 @@ def test_delete_local_missing_file_no_error(tmp_path, monkeypatch):
 # upload_file — routes to local when Supabase unconfigured
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_upload_file_local(tmp_path, monkeypatch):
     _reload_storage(monkeypatch)
@@ -98,12 +102,13 @@ async def test_delete_file_local(tmp_path, monkeypatch):
 @pytest.mark.anyio
 async def test_delete_file_empty_string_noop(monkeypatch):
     _reload_storage(monkeypatch)
-    await storage.delete_file("")   # should not raise
+    await storage.delete_file("")  # should not raise
 
 
 # ---------------------------------------------------------------------------
 # Supabase backend — mocked httpx
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.anyio
 async def test_upload_supabase_success(monkeypatch):

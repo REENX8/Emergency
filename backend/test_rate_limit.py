@@ -17,16 +17,19 @@ def client(monkeypatch):
     # Reload modules so the limiter picks up the env var + state is fresh
     # per test (slowapi keeps an in-memory bucket).
     import rate_limit
+
     importlib.reload(rate_limit)
     import routers.auth
     import routers.incidents
+
     importlib.reload(routers.auth)
     importlib.reload(routers.incidents)
     import main
+
     importlib.reload(main)
-    from main import app
     from database import Base, get_db
     from dynamic_graph import invalidate_graph_cache
+    from main import app
 
     engine = create_engine(
         "sqlite:///:memory:",
@@ -75,7 +78,6 @@ def test_register_rate_limit_triggers(client):
     # Register cap is 5/minute.
     statuses = []
     for i in range(8):
-        r = client.post("/auth/register",
-                        json={"email": f"u{i}@x.co", "password": "abcdefgh"})
+        r = client.post("/auth/register", json={"email": f"u{i}@x.co", "password": "abcdefgh"})
         statuses.append(r.status_code)
     assert 429 in statuses, f"expected at least one 429, got {statuses}"

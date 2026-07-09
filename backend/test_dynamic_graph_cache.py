@@ -36,12 +36,20 @@ def _seed_minimal_building(db):
     db.add(b)
     db.commit()
     db.refresh(b)
-    db.add_all([
-        Node(building_id=b.id, node_key="a", type="room", x=0, y=0, capacity=10, floor_number=1),
-        Node(building_id=b.id, node_key="b", type="exit", x=10, y=0, capacity=10, floor_number=1),
-    ])
+    db.add_all(
+        [
+            Node(
+                building_id=b.id, node_key="a", type="room", x=0, y=0, capacity=10, floor_number=1
+            ),
+            Node(
+                building_id=b.id, node_key="b", type="exit", x=10, y=0, capacity=10, floor_number=1
+            ),
+        ]
+    )
     db.flush()
-    db.add(Edge(building_id=b.id, u_key="a", v_key="b", distance_m=5.0, width_m=2.0, is_stair=False))
+    db.add(
+        Edge(building_id=b.id, u_key="a", v_key="b", distance_m=5.0, width_m=2.0, is_stair=False)
+    )
     db.commit()
     return b.id
 

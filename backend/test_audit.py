@@ -1,13 +1,15 @@
 """Tests for audit.py — append-only audit log helper."""
+
 import json
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from database import Base
-from models import User, AuditLog
 from audit import audit
+from database import Base
+from models import AuditLog, User
 
 
 @pytest.fixture()
@@ -37,10 +39,12 @@ def _make_user(db, email="op@test.com", role="operator"):
 # Basic write
 # ---------------------------------------------------------------------------
 
+
 def test_audit_creates_log_entry(db):
     user = _make_user(db)
-    audit(db, user, "building.create", target_type="building", target_id=1,
-          payload={"name": "Test"})
+    audit(
+        db, user, "building.create", target_type="building", target_id=1, payload={"name": "Test"}
+    )
     entry = db.query(AuditLog).first()
     assert entry is not None
     assert entry.action == "building.create"

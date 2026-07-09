@@ -16,22 +16,20 @@ constants at the top of this file or pass overrides into evaluate().
 
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict, field
-from typing import Optional
+from dataclasses import asdict, dataclass, field
 
 import networkx as nx
-
 
 # ---------------------------------------------------------------------------
 # Thresholds — กฎกระทรวง พ.ศ. 2535 (Thai building code)
 # ---------------------------------------------------------------------------
 
 # Minimum corridor / stair width for escape routes (metres)
-MIN_STAIR_WIDTH_M    = 1.50  # ฉบับที่ 55 §3 — บันไดหนีไฟกว้าง ≥ 1.50 m
+MIN_STAIR_WIDTH_M = 1.50  # ฉบับที่ 55 §3 — บันไดหนีไฟกว้าง ≥ 1.50 m
 MIN_CORRIDOR_WIDTH_M = 1.50  # ฉบับที่ 33 — ทางเดินอพยพ ≥ 1.50 m
 
 # Maximum travel distance from any room to nearest exit (metres of path)
-MAX_TRAVEL_DISTANCE_M_SPRINKLERED   = 60.0  # อาคารมีระบบดับเพลิงอัตโนมัติ
+MAX_TRAVEL_DISTANCE_M_SPRINKLERED = 60.0  # อาคารมีระบบดับเพลิงอัตโนมัติ
 MAX_TRAVEL_DISTANCE_M_UNSPRINKLERED = 30.0  # ไม่มี sprinkler — ฉบับที่ 33
 
 # Maximum dead-end corridor length (metres)
@@ -42,10 +40,10 @@ MIN_EXITS_PER_FLOOR = 2
 
 # Default area per person if Node.area_m2 is unset (square metres / person)
 OCCUPANCY_BY_TYPE = {
-    "office":      9.0,    # สำนักงาน — 9 ตร.ม./คน
-    "assembly":    0.65,   # ห้องประชุม / โรงอาหาร — 0.65 ตร.ม./คน
-    "residential": 18.0,   # ที่พักอาศัย — 18 ตร.ม./คน
-    "mixed":       6.0,    # ผสม
+    "office": 9.0,  # สำนักงาน — 9 ตร.ม./คน
+    "assembly": 0.65,  # ห้องประชุม / โรงอาหาร — 0.65 ตร.ม./คน
+    "residential": 18.0,  # ที่พักอาศัย — 18 ตร.ม./คน
+    "mixed": 6.0,  # ผสม
 }
 
 
@@ -53,12 +51,13 @@ OCCUPANCY_BY_TYPE = {
 # Data shapes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ComplianceFinding:
-    rule_id:  str
-    severity: str               # "fail" | "warn" | "info"
-    message:  str
-    location: dict = field(default_factory=dict)   # e.g. {"node": "r201"} or {"edge": ["c1","c2"]}
+    rule_id: str
+    severity: str  # "fail" | "warn" | "info"
+    message: str
+    location: dict = field(default_factory=dict)  # e.g. {"node": "r201"} or {"edge": ["c1","c2"]}
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -67,13 +66,14 @@ class ComplianceFinding:
 @dataclass
 class BuildingMeta:
     has_sprinkler: bool = False
-    building_type: str = "office"   # office / residential / assembly / mixed
-    total_floors:  int = 1
+    building_type: str = "office"  # office / residential / assembly / mixed
+    total_floors: int = 1
 
 
 # ---------------------------------------------------------------------------
 # Rules
 # ---------------------------------------------------------------------------
+
 
 def _exits(G: nx.Graph) -> list[str]:
     return [n for n, d in G.nodes(data=True) if d.get("type") == "exit"]
@@ -86,12 +86,14 @@ def check_stair_width(G: nx.Graph) -> list[ComplianceFinding]:
             continue
         width = float(d.get("width", 0))
         if width < MIN_STAIR_WIDTH_M:
-            findings.append(ComplianceFinding(
-                rule_id="stair_width",
-                severity="fail",
-                message=f"บันไดหนีไฟ {u}↔{v} กว้าง {width:.2f} m (ต่ำกว่า {MIN_STAIR_WIDTH_M} m ตามกฎกระทรวง ฉบับที่ 55)",
-                location={"edge": [u, v]},
-            ))
+            findings.append(
+                ComplianceFinding(
+                    rule_id="stair_width",
+                    severity="fail",
+                    message=f"บันไดหนีไฟ {u}↔{v} กว้าง {width:.2f} m (ต่ำกว่า {MIN_STAIR_WIDTH_M} m ตามกฎกระทรวง ฉบับที่ 55)",
+                    location={"edge": [u, v]},
+                )
+            )
     return findings
 
 
@@ -107,42 +109,54 @@ def check_corridor_width(G: nx.Graph) -> list[ComplianceFinding]:
             continue
         width = float(d.get("width", 0))
         if width < MIN_CORRIDOR_WIDTH_M:
-            findings.append(ComplianceFinding(
-                rule_id="corridor_width",
-                severity="warn",
-                message=f"ทางเดินอพยพ {u}↔{v} กว้าง {width:.2f} m (ต่ำกว่า {MIN_CORRIDOR_WIDTH_M} m)",
-                location={"edge": [u, v]},
-            ))
+            findings.append(
+                ComplianceFinding(
+                    rule_id="corridor_width",
+                    severity="warn",
+                    message=f"ทางเดินอพยพ {u}↔{v} กว้าง {width:.2f} m (ต่ำกว่า {MIN_CORRIDOR_WIDTH_M} m)",
+                    location={"edge": [u, v]},
+                )
+            )
     return findings
 
 
 def check_exit_count(G: nx.Graph, total_floors: int) -> list[ComplianceFinding]:
     findings = []
-    # Group exits by floor; if floors aren't tagged, treat the whole building
-    # as a single floor.
-    floors: dict[int, list[str]] = {}
-    for n, d in G.nodes(data=True):
-        if d.get("type") == "exit":
-            f = int(d.get("floor", 1))
-            floors.setdefault(f, []).append(n)
-    if not floors:
-        findings.append(ComplianceFinding(
-            rule_id="exit_count",
-            severity="fail",
-            message="ไม่มี exit node เลย — อาคารไม่มีทางออกฉุกเฉิน",
-            location={},
-        ))
+    has_exit = any(d.get("type") == "exit" for _, d in G.nodes(data=True))
+    if not has_exit:
+        findings.append(
+            ComplianceFinding(
+                rule_id="exit_count",
+                severity="fail",
+                message="ไม่มี exit node เลย — อาคารไม่มีทางออกฉุกเฉิน",
+                location={},
+            )
+        )
         return findings
-    # High-rise / large building rule: ≥ 2 exits per occupied floor.
+    # High-rise / large building rule: ≥ 2 escape routes per occupied floor.
+    # Every floor that has nodes is checked — a floor with no exit AND no
+    # fire-escape stair must not pass silently. Exits and stairs both count
+    # as escape routes for the floor they are on.
     if total_floors >= 2:
-        for f, exits in floors.items():
-            if len(exits) < MIN_EXITS_PER_FLOOR:
-                findings.append(ComplianceFinding(
-                    rule_id="exit_count",
-                    severity="fail",
-                    message=f"ชั้น {f} มี exit {len(exits)} จุด (ต้อง ≥ {MIN_EXITS_PER_FLOOR})",
-                    location={"floor": f},
-                ))
+        escape_routes: dict[int, int] = {}
+        for _n, d in G.nodes(data=True):
+            f = int(d.get("floor", 1))
+            escape_routes.setdefault(f, 0)
+            if d.get("type") in ("exit", "stair"):
+                escape_routes[f] += 1
+        for f, count in sorted(escape_routes.items()):
+            if count < MIN_EXITS_PER_FLOOR:
+                findings.append(
+                    ComplianceFinding(
+                        rule_id="exit_count",
+                        severity="fail",
+                        message=(
+                            f"ชั้น {f} มีทางหนีไฟ {count} จุด "
+                            f"(exit + บันไดหนีไฟ ต้อง ≥ {MIN_EXITS_PER_FLOOR})"
+                        ),
+                        location={"floor": f},
+                    )
+                )
     return findings
 
 
@@ -153,11 +167,13 @@ def check_travel_distance(G: nx.Graph, has_sprinkler: bool) -> list[ComplianceFi
     exits = _exits(G)
     if not exits:
         return findings  # caught by check_exit_count
-    threshold = MAX_TRAVEL_DISTANCE_M_SPRINKLERED if has_sprinkler else MAX_TRAVEL_DISTANCE_M_UNSPRINKLERED
+    threshold = (
+        MAX_TRAVEL_DISTANCE_M_SPRINKLERED if has_sprinkler else MAX_TRAVEL_DISTANCE_M_UNSPRINKLERED
+    )
     label = "sprinkler" if has_sprinkler else "ไม่มี sprinkler"
 
     # Per-edge distance for Dijkstra (metres of physical path, not weighted time).
-    for u, v, d in G.edges(data=True):
+    for _u, _v, d in G.edges(data=True):
         d["_dist_m"] = float(d.get("distance", 0))
 
     rooms = [n for n, d in G.nodes(data=True) if d.get("type") == "room"]
@@ -169,22 +185,25 @@ def check_travel_distance(G: nx.Graph, has_sprinkler: bool) -> list[ComplianceFi
             except (nx.NetworkXNoPath, nx.NodeNotFound):
                 continue
         if best == float("inf"):
-            findings.append(ComplianceFinding(
-                rule_id="travel_distance",
-                severity="fail",
-                message=f"ห้อง {room} ไม่มีทางเชื่อมไป exit ใด ๆ",
-                location={"node": room},
-            ))
+            findings.append(
+                ComplianceFinding(
+                    rule_id="travel_distance",
+                    severity="fail",
+                    message=f"ห้อง {room} ไม่มีทางเชื่อมไป exit ใด ๆ",
+                    location={"node": room},
+                )
+            )
         elif best > threshold:
-            findings.append(ComplianceFinding(
-                rule_id="travel_distance",
-                severity="fail",
-                message=(
-                    f"ห้อง {room} ห่าง exit ที่ใกล้สุด {best:.1f} m "
-                    f"(เกิน {threshold} m, {label})"
-                ),
-                location={"node": room, "distance_m": round(best, 1)},
-            ))
+            findings.append(
+                ComplianceFinding(
+                    rule_id="travel_distance",
+                    severity="fail",
+                    message=(
+                        f"ห้อง {room} ห่าง exit ที่ใกล้สุด {best:.1f} m (เกิน {threshold} m, {label})"
+                    ),
+                    location={"node": room, "distance_m": round(best, 1)},
+                )
+            )
     return findings
 
 
@@ -201,12 +220,14 @@ def check_dead_end(G: nx.Graph) -> list[ComplianceFinding]:
         u, v, edata = next(iter(G.edges(n, data=True)))
         length = float(edata.get("distance", 0))
         if length > MAX_DEAD_END_M:
-            findings.append(ComplianceFinding(
-                rule_id="dead_end",
-                severity="warn",
-                message=f"ทางตัน {n} ยาว {length:.1f} m (เกิน {MAX_DEAD_END_M} m)",
-                location={"node": n, "length_m": round(length, 1)},
-            ))
+            findings.append(
+                ComplianceFinding(
+                    rule_id="dead_end",
+                    severity="warn",
+                    message=f"ทางตัน {n} ยาว {length:.1f} m (เกิน {MAX_DEAD_END_M} m)",
+                    location={"node": n, "length_m": round(length, 1)},
+                )
+            )
     return findings
 
 
@@ -228,21 +249,24 @@ def check_occupancy(G: nx.Graph, building_type: str) -> list[ComplianceFinding]:
         max_people = int(float(area) / sqm_per_person)
         cap = int(d.get("capacity", 0))
         if cap > max_people:
-            findings.append(ComplianceFinding(
-                rule_id="occupancy",
-                severity="warn",
-                message=(
-                    f"ห้อง {n} ความจุ {cap} คน เกินค่าที่อนุญาตจากพื้นที่ "
-                    f"({max_people} คน @ {sqm_per_person} ตร.ม./คน, ประเภท {building_type})"
-                ),
-                location={"node": n, "capacity": cap, "max_allowed": max_people},
-            ))
+            findings.append(
+                ComplianceFinding(
+                    rule_id="occupancy",
+                    severity="warn",
+                    message=(
+                        f"ห้อง {n} ความจุ {cap} คน เกินค่าที่อนุญาตจากพื้นที่ "
+                        f"({max_people} คน @ {sqm_per_person} ตร.ม./คน, ประเภท {building_type})"
+                    ),
+                    location={"node": n, "capacity": cap, "max_allowed": max_people},
+                )
+            )
     return findings
 
 
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
+
 
 def evaluate(G: nx.Graph, meta: BuildingMeta) -> dict:
     """Run every rule and produce a compliance report.
@@ -271,24 +295,25 @@ def evaluate(G: nx.Graph, meta: BuildingMeta) -> dict:
 
     return {
         "findings": [f.to_dict() for f in findings],
-        "summary":  summary,
-        "score":    score,
+        "summary": summary,
+        "score": score,
         "thresholds": {
-            "min_stair_width_m":     MIN_STAIR_WIDTH_M,
-            "min_corridor_width_m":  MIN_CORRIDOR_WIDTH_M,
+            "min_stair_width_m": MIN_STAIR_WIDTH_M,
+            "min_corridor_width_m": MIN_CORRIDOR_WIDTH_M,
             "max_travel_distance_m": (
-                MAX_TRAVEL_DISTANCE_M_SPRINKLERED if meta.has_sprinkler
+                MAX_TRAVEL_DISTANCE_M_SPRINKLERED
+                if meta.has_sprinkler
                 else MAX_TRAVEL_DISTANCE_M_UNSPRINKLERED
             ),
-            "max_dead_end_m":        MAX_DEAD_END_M,
-            "min_exits_per_floor":   MIN_EXITS_PER_FLOOR,
-            "sqm_per_person":        OCCUPANCY_BY_TYPE.get(
+            "max_dead_end_m": MAX_DEAD_END_M,
+            "min_exits_per_floor": MIN_EXITS_PER_FLOOR,
+            "sqm_per_person": OCCUPANCY_BY_TYPE.get(
                 meta.building_type, OCCUPANCY_BY_TYPE["office"]
             ),
         },
         "meta": {
             "has_sprinkler": meta.has_sprinkler,
             "building_type": meta.building_type,
-            "total_floors":  meta.total_floors,
+            "total_floors": meta.total_floors,
         },
     }

@@ -13,11 +13,11 @@ If the TMD API is unavailable, the module falls back to a cached/mock
 response so the simulation continues to work offline.
 """
 
-import httpx
+import logging
 import math
 import time
-import logging
-from typing import Optional
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ DEFAULT_STATION = "515201"  # Bangna, Bangkok
 # Fallback mock weather when API is down
 _MOCK_WEATHER = {
     "wind_speed_ms": 3.5,
-    "wind_direction_deg": 135,   # SE wind → blows toward NW
+    "wind_direction_deg": 135,  # SE wind → blows toward NW
     "temperature_c": 32.0,
     "humidity_pct": 75,
     "description": "Partly cloudy (offline fallback)",
@@ -40,14 +40,14 @@ _MOCK_WEATHER = {
 
 # Module-level pooled httpx client (initialised by lifespan in main.py).
 # Reusing the connection pool avoids per-request TCP/TLS handshakes.
-_client: Optional[httpx.AsyncClient] = None
+_client: httpx.AsyncClient | None = None
 
 # In-memory TTL cache: station_id -> (expires_at_epoch, weather_dict)
 _CACHE_TTL_SECONDS = 60.0
 _cache: dict[str, tuple[float, dict]] = {}
 
 
-def set_http_client(client: Optional[httpx.AsyncClient]) -> None:
+def set_http_client(client: httpx.AsyncClient | None) -> None:
     """Inject the shared httpx client (called from FastAPI lifespan)."""
     global _client
     _client = client
@@ -121,10 +121,10 @@ def _parse_tmd_response(data: dict, station_id: str) -> dict:
             raise ValueError("No observation data")
 
         wind_speed = float(obs.get("WindSpeed", 0) or 0)
-        wind_dir   = float(obs.get("WindDirection", 0) or 0)
-        temp       = float(obs.get("AirTemperature", 30) or 30)
-        humidity   = float(obs.get("RelativeHumidity", 70) or 70)
-        desc       = obs.get("Condition", "")
+        wind_dir = float(obs.get("WindDirection", 0) or 0)
+        temp = float(obs.get("AirTemperature", 30) or 30)
+        humidity = float(obs.get("RelativeHumidity", 70) or 70)
+        desc = obs.get("Condition", "")
 
         return {
             "wind_speed_ms": round(wind_speed * 0.2778, 2),  # km/h → m/s
@@ -144,10 +144,11 @@ def _parse_tmd_response(data: dict, station_id: str) -> dict:
 # Smoke spread model
 # ---------------------------------------------------------------------------
 
+
 def compute_smoke_spread(
     fire_node: str,
-    graph_nodes: dict,           # node_id → {"x": int, "y": int, ...}
-    graph_edges: list[tuple],    # [(u, v), ...]
+    graph_nodes: dict,  # node_id → {"x": int, "y": int, ...}
+    graph_edges: list[tuple],  # [(u, v), ...]
     wind_direction_deg: float,
     wind_speed_ms: float,
     smoke_radius_m: float = 20.0,
@@ -182,7 +183,7 @@ def compute_smoke_spread(
     toward_deg = (wind_direction_deg + 180) % 360
     toward_rad = math.radians(toward_deg)
     # Compass: 0° = N (+y in screen coords is down), 90° = E (+x)
-    wx = math.sin(toward_rad)   # east component
+    wx = math.sin(toward_rad)  # east component
     wy = -math.cos(toward_rad)  # north component (screen y flipped)
 
     blocked = []

@@ -1,26 +1,27 @@
 """Tests for weather.py — TMD API integration, cache, fallback, smoke spread."""
-import math
-import time
-import pytest
+
 import httpx
+import pytest
 
 import weather as W
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_tmd_response(wind_speed_kmh=10.0, wind_dir=90.0, temp=30.0, humidity=70.0):
     return {
         "WeatherObservations": {
-            "WeatherObservation": [{
-                "WindSpeed":        wind_speed_kmh,
-                "WindDirection":    wind_dir,
-                "AirTemperature":   temp,
-                "RelativeHumidity": humidity,
-                "Condition":        "Clear",
-            }]
+            "WeatherObservation": [
+                {
+                    "WindSpeed": wind_speed_kmh,
+                    "WindDirection": wind_dir,
+                    "AirTemperature": temp,
+                    "RelativeHumidity": humidity,
+                    "Condition": "Clear",
+                }
+            ]
         }
     }
 
@@ -29,14 +30,17 @@ def _make_tmd_response(wind_speed_kmh=10.0, wind_dir=90.0, temp=30.0, humidity=7
 # fetch_weather — success path (mocked httpx)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.anyio
 async def test_fetch_weather_success(monkeypatch):
     W._cache.clear()
-    W.set_http_client(None)   # force one-off client path
+    W.set_http_client(None)  # force one-off client path
 
     async def mock_get(self, url, **kwargs):
         req = httpx.Request("GET", url)
-        resp = httpx.Response(200, json=_make_tmd_response(wind_speed_kmh=36.0, wind_dir=180.0), request=req)
+        resp = httpx.Response(
+            200, json=_make_tmd_response(wind_speed_kmh=36.0, wind_dir=180.0), request=req
+        )
         return resp
 
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
@@ -44,7 +48,7 @@ async def test_fetch_weather_success(monkeypatch):
     result = await W.fetch_weather("515201")
     assert result["source"] == "tmd"
     assert result["wind_direction_deg"] == 180.0
-    assert abs(result["wind_speed_ms"] - 10.0) < 0.1   # 36 km/h * 0.2778 ≈ 10
+    assert abs(result["wind_speed_ms"] - 10.0) < 0.1  # 36 km/h * 0.2778 ≈ 10
     assert result["station"] == "515201"
     W._cache.clear()
 
@@ -63,7 +67,7 @@ async def test_fetch_weather_uses_cache(monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
 
     await W.fetch_weather("515201")
-    await W.fetch_weather("515201")   # second call should hit cache
+    await W.fetch_weather("515201")  # second call should hit cache
 
     assert call_count["n"] == 1, "Expected only one real HTTP call due to cache"
     W._cache.clear()
@@ -105,6 +109,7 @@ async def test_fetch_weather_fallback_on_bad_status(monkeypatch):
 # _parse_tmd_response
 # ---------------------------------------------------------------------------
 
+
 def test_parse_valid_response():
     data = _make_tmd_response(wind_speed_kmh=18.0, wind_dir=270.0, temp=28.5, humidity=80.0)
     result = W._parse_tmd_response(data, "515201")
@@ -123,11 +128,15 @@ def test_parse_empty_observation_returns_mock():
 def test_parse_observation_with_none_values():
     data = {
         "WeatherObservations": {
-            "WeatherObservation": [{
-                "WindSpeed": None, "WindDirection": None,
-                "AirTemperature": None, "RelativeHumidity": None,
-                "Condition": "",
-            }]
+            "WeatherObservation": [
+                {
+                    "WindSpeed": None,
+                    "WindDirection": None,
+                    "AirTemperature": None,
+                    "RelativeHumidity": None,
+                    "Condition": "",
+                }
+            ]
         }
     }
     result = W._parse_tmd_response(data, "515201")
@@ -140,8 +149,10 @@ def test_parse_single_observation_dict():
     data = {
         "WeatherObservations": {
             "WeatherObservation": {
-                "WindSpeed": 5.0, "WindDirection": 45.0,
-                "AirTemperature": 25.0, "RelativeHumidity": 60.0,
+                "WindSpeed": 5.0,
+                "WindDirection": 45.0,
+                "AirTemperature": 25.0,
+                "RelativeHumidity": 60.0,
                 "Condition": "Sunny",
             }
         }
@@ -155,13 +166,15 @@ def test_parse_single_observation_dict():
 # compute_smoke_spread
 # ---------------------------------------------------------------------------
 
+
 def _nodes():
     return {
         "fire": {"x": 0, "y": 0},
-        "A":    {"x": 60, "y": 0},    # 10 m east of fire
-        "B":    {"x": -60, "y": 0},   # 10 m west of fire (upwind)
-        "C":    {"x": 0, "y": 60},    # 10 m south
+        "A": {"x": 60, "y": 0},  # 10 m east of fire
+        "B": {"x": -60, "y": 0},  # 10 m west of fire (upwind)
+        "C": {"x": 0, "y": 60},  # 10 m south
     }
+
 
 def test_smoke_spread_downwind_blocked():
     """Wind from W (270°) → blows east. Node A is downwind → blocked."""
@@ -171,13 +184,13 @@ def test_smoke_spread_downwind_blocked():
         fire_node="fire",
         graph_nodes=nodes,
         graph_edges=edges,
-        wind_direction_deg=270.0,   # FROM west → blows east
+        wind_direction_deg=270.0,  # FROM west → blows east
         wind_speed_ms=5.0,
         smoke_radius_m=15.0,
     )
     blocked_set = set(map(tuple, blocked))
     assert ("fire", "A") in blocked_set
-    assert ("fire", "B") not in blocked_set   # upwind, not blocked
+    assert ("fire", "B") not in blocked_set  # upwind, not blocked
 
 
 def test_smoke_spread_unknown_fire_node():
@@ -209,7 +222,7 @@ def test_smoke_spread_high_wind_expands_radius():
     """Higher wind speed → larger effective radius → more edges blocked."""
     nodes = {
         "fire": {"x": 0, "y": 0},
-        "Far":  {"x": 600, "y": 0},   # 100 m east, beyond normal radius
+        "Far": {"x": 600, "y": 0},  # 100 m east, beyond normal radius
     }
     blocked_slow = W.compute_smoke_spread("fire", nodes, [("fire", "Far")], 270.0, 1.0, 20.0)
     blocked_fast = W.compute_smoke_spread("fire", nodes, [("fire", "Far")], 270.0, 50.0, 20.0)

@@ -11,11 +11,12 @@ Set env vars to enable Supabase mode:
 """
 
 import os
+
 import httpx
 
-SUPABASE_URL  = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-BUCKET        = os.getenv("SUPABASE_BUCKET", "floor-plans")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+BUCKET = os.getenv("SUPABASE_BUCKET", "floor-plans")
 
 _UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 
@@ -54,6 +55,7 @@ async def delete_file(path_or_url: str) -> None:
 # Supabase Storage backend
 # ---------------------------------------------------------------------------
 
+
 async def _upload_supabase(content: bytes, filename: str, content_type: str) -> str:
     upload_url = f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{filename}"
     async with httpx.AsyncClient(timeout=30) as client:
@@ -61,9 +63,9 @@ async def _upload_supabase(content: bytes, filename: str, content_type: str) -> 
             upload_url,
             content=content,
             headers={
-                "Authorization":  f"Bearer {SUPABASE_KEY}",
-                "Content-Type":   content_type,
-                "x-upsert":       "true",   # overwrite if exists
+                "Authorization": f"Bearer {SUPABASE_KEY}",
+                "Content-Type": content_type,
+                "x-upsert": "true",  # overwrite if exists
             },
         )
         r.raise_for_status()
@@ -84,11 +86,12 @@ async def _delete_supabase(public_url: str) -> None:
 # Local filesystem backend
 # ---------------------------------------------------------------------------
 
+
 def _save_local(content: bytes, filename: str) -> str:
     os.makedirs(_UPLOAD_DIR, exist_ok=True)
     with open(os.path.join(_UPLOAD_DIR, filename), "wb") as f:
         f.write(content)
-    return filename   # caller prepends /uploads/ for serving
+    return filename  # caller prepends /uploads/ for serving
 
 
 def _delete_local(filename: str) -> None:

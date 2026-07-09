@@ -3,8 +3,8 @@ test_fire_spread.py — Tests for the physics-based fire spread model.
 """
 
 import math
+
 import networkx as nx
-import pytest
 
 from fire_spread import (
     V_BASE,
@@ -17,6 +17,7 @@ from fire_spread import (
 # Helper graph factories
 # ---------------------------------------------------------------------------
 
+
 def make_chain_graph() -> nx.Graph:
     """
     Linear chain: A --10m-- B --10m-- C
@@ -24,9 +25,9 @@ def make_chain_graph() -> nx.Graph:
     All rooms, width=2m
     """
     G = nx.Graph()
-    G.add_node("A", type="room",     x=0,   y=0, capacity=10)
-    G.add_node("B", type="room",     x=60,  y=0, capacity=10)
-    G.add_node("C", type="room",     x=120, y=0, capacity=10)
+    G.add_node("A", type="room", x=0, y=0, capacity=10)
+    G.add_node("B", type="room", x=60, y=0, capacity=10)
+    G.add_node("C", type="room", x=120, y=0, capacity=10)
     G.add_edge("A", "B", weight=10.0, distance=10.0, width=2.0, is_stair=False)
     G.add_edge("B", "C", weight=10.0, distance=10.0, width=2.0, is_stair=False)
     return G
@@ -38,11 +39,11 @@ def make_type_graph() -> nx.Graph:
     ROOM: type=room, STAIR: type=stair, CORR: type=corridor, EXIT_N: type=exit
     """
     G = nx.Graph()
-    G.add_node("FIRE",  type="room",     x=0,   y=0, capacity=10)
-    G.add_node("ROOM",  type="room",     x=60,  y=0, capacity=10)
-    G.add_node("STAIR", type="stair",    x=0,   y=60, capacity=10)
-    G.add_node("CORR",  type="corridor", x=-60, y=0, capacity=10)
-    G.add_node("EXIT_N", type="exit",    x=0,   y=-60, capacity=50)
+    G.add_node("FIRE", type="room", x=0, y=0, capacity=10)
+    G.add_node("ROOM", type="room", x=60, y=0, capacity=10)
+    G.add_node("STAIR", type="stair", x=0, y=60, capacity=10)
+    G.add_node("CORR", type="corridor", x=-60, y=0, capacity=10)
+    G.add_node("EXIT_N", type="exit", x=0, y=-60, capacity=50)
 
     for dest in ("ROOM", "STAIR", "CORR", "EXIT_N"):
         G.add_edge("FIRE", dest, weight=5.0, distance=10.0, width=2.0, is_stair=False)
@@ -54,12 +55,12 @@ def make_width_graph() -> nx.Graph:
     FIRE → NARROW (width=0.5m) and FIRE → WIDE (width=2.0m), same distance.
     """
     G = nx.Graph()
-    G.add_node("FIRE",   type="room", x=0,   y=0, capacity=10)
-    G.add_node("NARROW", type="room", x=60,  y=0, capacity=10)
-    G.add_node("WIDE",   type="room", x=-60, y=0, capacity=10)
+    G.add_node("FIRE", type="room", x=0, y=0, capacity=10)
+    G.add_node("NARROW", type="room", x=60, y=0, capacity=10)
+    G.add_node("WIDE", type="room", x=-60, y=0, capacity=10)
 
     G.add_edge("FIRE", "NARROW", weight=5.0, distance=10.0, width=0.5, is_stair=False)
-    G.add_edge("FIRE", "WIDE",   weight=5.0, distance=10.0, width=2.0, is_stair=False)
+    G.add_edge("FIRE", "WIDE", weight=5.0, distance=10.0, width=2.0, is_stair=False)
     return G
 
 
@@ -69,8 +70,8 @@ def make_wind_graph() -> nx.Graph:
     Wind blows from West (270°) toward East.
     """
     G = nx.Graph()
-    G.add_node("FIRE", type="room", x=0,   y=0, capacity=10)
-    G.add_node("EAST", type="room", x=60,  y=0, capacity=10)
+    G.add_node("FIRE", type="room", x=0, y=0, capacity=10)
+    G.add_node("EAST", type="room", x=60, y=0, capacity=10)
     G.add_node("WEST", type="room", x=-60, y=0, capacity=10)
 
     G.add_edge("FIRE", "EAST", weight=5.0, distance=10.0, width=2.0, is_stair=False)
@@ -83,13 +84,13 @@ def make_disconnected_graph() -> nx.Graph:
     Two separate components: {FIRE, A, B} and {ISOLATED}
     """
     G = nx.Graph()
-    G.add_node("FIRE",     type="room", x=0,   y=0, capacity=10)
-    G.add_node("A",        type="room", x=60,  y=0, capacity=10)
-    G.add_node("B",        type="room", x=120, y=0, capacity=10)
+    G.add_node("FIRE", type="room", x=0, y=0, capacity=10)
+    G.add_node("A", type="room", x=60, y=0, capacity=10)
+    G.add_node("B", type="room", x=120, y=0, capacity=10)
     G.add_node("ISOLATED", type="room", x=500, y=0, capacity=10)
 
     G.add_edge("FIRE", "A", weight=5.0, distance=10.0, width=2.0, is_stair=False)
-    G.add_edge("A",    "B", weight=5.0, distance=10.0, width=2.0, is_stair=False)
+    G.add_edge("A", "B", weight=5.0, distance=10.0, width=2.0, is_stair=False)
     # ISOLATED has no edges
     return G
 
@@ -99,12 +100,12 @@ def make_smoke_blocked_graph() -> nx.Graph:
     FIRE → BLOCKED (smoke-blocked, weight=inf) and FIRE → OPEN
     """
     G = nx.Graph()
-    G.add_node("FIRE",    type="room", x=0,   y=0, capacity=10)
-    G.add_node("BLOCKED", type="room", x=60,  y=0, capacity=10)
-    G.add_node("OPEN",    type="room", x=-60, y=0, capacity=10)
+    G.add_node("FIRE", type="room", x=0, y=0, capacity=10)
+    G.add_node("BLOCKED", type="room", x=60, y=0, capacity=10)
+    G.add_node("OPEN", type="room", x=-60, y=0, capacity=10)
 
     G.add_edge("FIRE", "BLOCKED", weight=float("inf"), distance=10.0, width=2.0, is_stair=False)
-    G.add_edge("FIRE", "OPEN",    weight=5.0,          distance=10.0, width=2.0, is_stair=False)
+    G.add_edge("FIRE", "OPEN", weight=5.0, distance=10.0, width=2.0, is_stair=False)
     return G
 
 
@@ -112,8 +113,8 @@ def make_smoke_blocked_graph() -> nx.Graph:
 # Tests: compute_fire_spread
 # ---------------------------------------------------------------------------
 
-class TestComputeFireSpread:
 
+class TestComputeFireSpread:
     def test_source_has_reach_time_zero(self):
         """Fire starts at source node — reach_time[source] == 0."""
         G = make_chain_graph()
@@ -175,9 +176,9 @@ class TestComputeFireSpread:
     def test_wind_in_same_direction_speeds_up_spread(self):
         """Wind from West (270°) toward East: EAST node reached faster with wind."""
         G = make_wind_graph()
-        no_wind  = compute_fire_spread("FIRE", G, wind_direction_deg=270, wind_speed_ms=0.0)
+        no_wind = compute_fire_spread("FIRE", G, wind_direction_deg=270, wind_speed_ms=0.0)
         with_wind = compute_fire_spread("FIRE", G, wind_direction_deg=270, wind_speed_ms=5.0)
-        rt_no   = no_wind["reach_time"]["EAST"]
+        rt_no = no_wind["reach_time"]["EAST"]
         rt_wind = with_wind["reach_time"]["EAST"]
         assert rt_wind < rt_no, (
             f"Wind should speed up eastward spread: {rt_wind:.2f}s < {rt_no:.2f}s"
@@ -190,7 +191,7 @@ class TestComputeFireSpread:
         → clamped to 0 → wind_factor stays 1.0 → same as no-wind.
         """
         G = make_wind_graph()
-        no_wind   = compute_fire_spread("FIRE", G, wind_direction_deg=270, wind_speed_ms=5.0)
+        no_wind = compute_fire_spread("FIRE", G, wind_direction_deg=270, wind_speed_ms=5.0)
         rt_west_with_wind = no_wind["reach_time"]["WEST"]
 
         # No-wind baseline
@@ -246,10 +247,10 @@ class TestComputeFireSpread:
         result = compute_fire_spread("FIRE", G, wind_direction_deg=0, wind_speed_ms=0)
         rt = result["reach_time"]
 
-        expected_room  = 10.0 / (V_BASE * 1.0 * 1.0 * 1.0)   # 500s
-        expected_stair = 10.0 / (V_BASE * 2.5 * 1.0 * 1.0)    # 200s
+        expected_room = 10.0 / (V_BASE * 1.0 * 1.0 * 1.0)  # 500s
+        expected_stair = 10.0 / (V_BASE * 2.5 * 1.0 * 1.0)  # 200s
 
-        assert math.isclose(rt["ROOM"],  expected_room,  rel_tol=1e-6)
+        assert math.isclose(rt["ROOM"], expected_room, rel_tol=1e-6)
         assert math.isclose(rt["STAIR"], expected_stair, rel_tol=1e-6)
 
 
@@ -257,8 +258,8 @@ class TestComputeFireSpread:
 # Tests: fire_nodes_at_time
 # ---------------------------------------------------------------------------
 
-class TestFireNodesAtTime:
 
+class TestFireNodesAtTime:
     def test_returns_source_at_time_zero(self):
         reach_time = {"A": 0.0, "B": 100.0, "C": 200.0}
         nodes = fire_nodes_at_time(reach_time, 0.0)
@@ -291,8 +292,8 @@ class TestFireNodesAtTime:
 # Tests: fire_spread_to_cytoscape
 # ---------------------------------------------------------------------------
 
-class TestFireSpreadToCytoscape:
 
+class TestFireSpreadToCytoscape:
     def test_returns_sorted_list(self):
         """Output is sorted ascending by reach_time."""
         reach_time = {"C": 200.0, "A": 0.0, "B": 100.0}

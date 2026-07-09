@@ -13,12 +13,13 @@ In-process cache:
 
 import copy
 import logging
+
 import networkx as nx
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from graph_builder import calculate_edge_weight
-from models import Building, Node, Edge, Incident
+from models import Edge, Incident, Node
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +33,7 @@ def _compute_version_key(building_id: int, db: Session) -> tuple:
     node_count = db.query(func.count(Node.id)).filter(Node.building_id == building_id).scalar() or 0
     edge_count = db.query(func.count(Edge.id)).filter(Edge.building_id == building_id).scalar() or 0
     latest_incident = (
-        db.query(func.max(Incident.id))
-        .filter(Incident.building_id == building_id)
-        .scalar()
+        db.query(func.max(Incident.id)).filter(Incident.building_id == building_id).scalar()
     ) or 0
     # Track active fire incidents separately: toggling is_active doesn't change
     # the max(id), so the cache would otherwise serve a stale graph.
@@ -65,16 +64,11 @@ def _apply_crowd_overrides(G: nx.Graph, crowd_overrides: dict[str, float]) -> No
     affected_nodes = set(crowd_overrides.keys()) & set(G.nodes())
     for n in affected_nodes:
         for _, neighbour, data in G.edges(n, data=True):
-            density = (
-                crowd_overrides.get(n, 0.0)
-                + crowd_overrides.get(neighbour, 0.0)
-            ) / 2.0
+            density = (crowd_overrides.get(n, 0.0) + crowd_overrides.get(neighbour, 0.0)) / 2.0
             if data.get("smoke_blocked"):
                 continue
             data["crowd_density"] = round(density, 3)
-            data["weight"] = calculate_edge_weight(
-                data["distance"], density, 0.0, data["is_stair"]
-            )
+            data["weight"] = calculate_edge_weight(data["distance"], density, 0.0, data["is_stair"])
 
 
 def build_graph_from_db(
@@ -111,8 +105,8 @@ def build_graph_from_db(
         return G
 
     # Load data from DB
-    db_nodes  = db.query(Node).filter(Node.building_id == building_id).all()
-    db_edges  = db.query(Edge).filter(Edge.building_id == building_id).all()
+    db_nodes = db.query(Node).filter(Node.building_id == building_id).all()
+    db_edges = db.query(Edge).filter(Edge.building_id == building_id).all()
     active_incidents = (
         db.query(Incident)
         .filter(Incident.building_id == building_id, Incident.is_active == True)  # noqa: E712
@@ -142,13 +136,13 @@ def build_graph_from_db(
     # Add nodes
     for n in db_nodes:
         attrs = {
-            "type":     n.type,
-            "floor":    n.floor_number,
-            "x":        n.x,
-            "y":        n.y,
-            "label":    n.label or n.node_key,
+            "type": n.type,
+            "floor": n.floor_number,
+            "x": n.x,
+            "y": n.y,
+            "label": n.label or n.node_key,
             "capacity": n.capacity,
-            "area_m2":  n.area_m2,
+            "area_m2": n.area_m2,
         }
         if n.node_key in fire_nodes:
             attrs["on_fire"] = True
@@ -160,20 +154,21 @@ def build_graph_from_db(
             continue  # orphaned edge (node deleted)
 
         density = (crowd_override.get(e.u_key, 0.0) + crowd_override.get(e.v_key, 0.0)) / 2.0
-        weight    = calculate_edge_weight(e.distance_m, density, 0.0, e.is_stair)
-        base_time = calculate_edge_weight(e.distance_m, 0.0,    0.0, e.is_stair)
+        weight = calculate_edge_weight(e.distance_m, density, 0.0, e.is_stair)
+        base_time = calculate_edge_weight(e.distance_m, 0.0, 0.0, e.is_stair)
 
         smoke_blocked = bool(e.u_key in smoke_nodes or e.v_key in smoke_nodes)
 
         G.add_edge(
-            e.u_key, e.v_key,
-            weight        = float("inf") if smoke_blocked else weight,
-            distance      = e.distance_m,
-            width         = e.width_m,
-            is_stair      = e.is_stair,
-            base_time     = base_time,
-            crowd_density = round(density, 3),
-            smoke_blocked = smoke_blocked,
+            e.u_key,
+            e.v_key,
+            weight=float("inf") if smoke_blocked else weight,
+            distance=e.distance_m,
+            width=e.width_m,
+            is_stair=e.is_stair,
+            base_time=base_time,
+            crowd_density=round(density, 3),
+            smoke_blocked=smoke_blocked,
         )
 
     # Cache the freshly built base graph, then return a copy with manual
@@ -186,11 +181,7 @@ def build_graph_from_db(
 
 def get_exits_from_db(building_id: int, db: Session) -> list[str]:
     """Return node_keys of all exit nodes for the given building."""
-    exits = (
-        db.query(Node)
-        .filter(Node.building_id == building_id, Node.type == "exit")
-        .all()
-    )
+    exits = db.query(Node).filter(Node.building_id == building_id, Node.type == "exit").all()
     return [n.node_key for n in exits]
 
 
@@ -198,17 +189,19 @@ def graph_to_cytoscape(G: nx.Graph) -> dict:
     """Convert nx.Graph → {nodes, edges} for Cytoscape.js (same format as main.py helper)."""
     nodes = []
     for node_id, data in G.nodes(data=True):
-        nodes.append({
-            "data": {
-                "id":       node_id,
-                "label":    data.get("label", node_id),
-                "type":     data.get("type", "room"),
-                "floor":    data.get("floor", 1),
-                "capacity": data.get("capacity", 0),
-                "on_fire":  data.get("on_fire", False),
-            },
-            "position": {"x": data.get("x", 0), "y": data.get("y", 0)},
-        })
+        nodes.append(
+            {
+                "data": {
+                    "id": node_id,
+                    "label": data.get("label", node_id),
+                    "type": data.get("type", "room"),
+                    "floor": data.get("floor", 1),
+                    "capacity": data.get("capacity", 0),
+                    "on_fire": data.get("on_fire", False),
+                },
+                "position": {"x": data.get("x", 0), "y": data.get("y", 0)},
+            }
+        )
 
     edges = []
     seen = set()
@@ -217,18 +210,22 @@ def graph_to_cytoscape(G: nx.Graph) -> dict:
         if key in seen:
             continue
         seen.add(key)
-        edges.append({
-            "data": {
-                "id":           f"{u}__{v}",
-                "source":       u,
-                "target":       v,
-                "weight":       round(data.get("weight", 0) if data.get("weight") != float("inf") else 9999, 2),
-                "distance":     data.get("distance", 0),
-                "width":        data.get("width", 0),
-                "crowd_density": round(data.get("crowd_density", 0), 2),
-                "smoke_blocked": data.get("smoke_blocked", False),
-                "is_stair":     data.get("is_stair", False),
+        edges.append(
+            {
+                "data": {
+                    "id": f"{u}__{v}",
+                    "source": u,
+                    "target": v,
+                    "weight": round(
+                        data.get("weight", 0) if data.get("weight") != float("inf") else 9999, 2
+                    ),
+                    "distance": data.get("distance", 0),
+                    "width": data.get("width", 0),
+                    "crowd_density": round(data.get("crowd_density", 0), 2),
+                    "smoke_blocked": data.get("smoke_blocked", False),
+                    "is_stair": data.get("is_stair", False),
+                }
             }
-        })
+        )
 
     return {"nodes": nodes, "edges": edges}
