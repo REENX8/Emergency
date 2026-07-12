@@ -175,3 +175,52 @@ export const safetyScore = (nodes, edges) => {
     },
   };
 };
+
+/* ── Evacuee animation: where is each person at time t? ──────
+   Walks each route's path edge-by-edge using the same weighted
+   edge times as the router, so the dot arrives exactly when the
+   route's time_s elapses. Returns [{source, x, y, arrived, progress}]. */
+export const evacueePositions = (nodes, edges, routes, elapsedS, smoke = {}, crowd = {}) => {
+  if (!elapsedS || elapsedS <= 0) return [];
+  const byId = {};
+  nodes.forEach(n => { byId[n.id] = n; });
+  const edgeByKey = {};
+  edges.forEach(e => { edgeByKey[`${e.u}__${e.v}`] = e; edgeByKey[`${e.v}__${e.u}`] = e; });
+
+  const out = [];
+  routes.forEach(r => {
+    if (!r.reachable || !r.path || r.path.length < 2) return;
+    let t = elapsedS;
+    let total = 0;
+    let placed = false;
+    for (let i = 0; i < r.path.length - 1; i++) {
+      const a = byId[r.path[i]], b = byId[r.path[i + 1]];
+      const e = edgeByKey[`${r.path[i]}__${r.path[i + 1]}`];
+      if (!a || !b || !e) return;
+      const s = smoke[`${e.u}__${e.v}`] ?? smoke[`${e.v}__${e.u}`] ?? 0;
+      const d = ((crowd[e.u] ?? 0) + (crowd[e.v] ?? 0)) / 2;
+      const w = edgeWeight(e, s, d);
+      if (!isFinite(w)) return; // blocked mid-path — treat as not animatable
+      total += w;
+      if (!placed && t <= w) {
+        const f = w > 0 ? t / w : 1;
+        out.push({
+          source: r.source,
+          x: a.x + (b.x - a.x) * f,
+          y: a.y + (b.y - a.y) * f,
+          arrived: false,
+          progress: 0, // filled below once total is known
+        });
+        placed = true;
+      }
+      if (!placed) t -= w;
+    }
+    if (!placed) {
+      const exitNode = byId[r.path[r.path.length - 1]];
+      out.push({ source: r.source, x: exitNode.x, y: exitNode.y, arrived: true, progress: 1 });
+    } else {
+      out[out.length - 1].progress = Math.min(1, elapsedS / (total || 1));
+    }
+  });
+  return out;
+};

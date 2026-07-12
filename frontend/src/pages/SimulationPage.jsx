@@ -13,6 +13,7 @@ import { SimTopBar, Legend } from '../js/TopBar';
 import {
   propagateSmoke,
   computeFireSpread,
+  evacueePositions,
   planEvacuation,
   safetyScore,
 } from '../js/sim';
@@ -176,6 +177,11 @@ export default function SimulationPage() {
     return reachable.reduce((a, b) => (a.time_s < b.time_s ? a : b)).path;
   }, [compareAstar]);
 
+  // Evacuee dots follow their routes on the same clock as the fire timeline.
+  const evacuees = useMemo(
+    () => evacueePositions(nodes, edges, activeRoutes, fireTime, smoke, crowd),
+    [nodes, edges, activeRoutes, fireTime, smoke, crowd]);
+
   const safety = useMemo(() => safetyScore(nodes, edges), [nodes, edges]);
   const bottlenecks = useMemo(() => {
     const exits = nodes.filter(n => n.type === 'exit').map(n => n.id);
@@ -286,6 +292,7 @@ export default function SimulationPage() {
               highlightedNode={clickedNode}
               onNodeClick={setClickedNode}
               formulaOverlay={false}
+              evacuees={evacuees}
             />
 
             <StatusStrip

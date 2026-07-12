@@ -58,7 +58,7 @@ export function SimTopBar({ building, algorithm, setAlgorithm, weather, useWeath
               <div className="building-name">{building.name}</div>
               <div className="building-sub mono small dim">B-{String(building.id).padStart(3,'0')} · {building.address || ''}</div>
             </div>
-            <button className="iconbtn" title="เปลี่ยนอาคาร" onClick={() => navigate('/')}>⇄</button>
+            <button className="iconbtn" title="เปลี่ยนอาคาร" aria-label="เปลี่ยนอาคาร" onClick={() => navigate('/')}>⇄</button>
           </div>
         )}
       </div>

@@ -125,9 +125,16 @@ Algorithm: Dijkstra จาก fire source — minimize cumulative `t_spread`
 - ความซับซ้อน: **O((V + E) log V)**
 
 ### A*
-- Dijkstra + heuristic `h(n)` = Euclidean distance จาก node ถึงปลายทาง (pixel → เมตร → วินาที)
-- Admissible: `h ≤` ต้นทุนจริงเสมอ → optimal
-- สำรวจ node น้อยกว่า Dijkstra ในทางปฏิบัติ
+- Dijkstra + heuristic `h(n)` = Euclidean distance จาก node ถึงปลายทาง
+  (pixel → เมตร ด้วย ratio px/m สูงสุดที่วัดจากกราฟจริง → วินาที)
+- Admissible: `h ≤` ต้นทุนจริงเสมอ ไม่ว่าแปลนจะวาดที่สเกลใด → optimal
+- สำรวจ node ≤ Dijkstra (มี performance test ยืนยันบน grid 2000 nodes)
+
+### Simulation timeline (operator console)
+กด ▶ บน SimulationPage เพื่อเล่นเหตุการณ์ตามเวลา: ไฟ/ควันลามตาม fire-spread
+model และ**จุดผู้อพยพเคลื่อนจากห้องไปยัง exit ตามเส้นทางจริง** ด้วยนาฬิกา
+เดียวกับ router (ถึง exit ตรงเวลา `time_s` ของเส้นทางพอดี — `evacueePositions`
+ใน `frontend/src/js/sim.js`)
 
 ---
 

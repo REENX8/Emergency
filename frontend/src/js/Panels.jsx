@@ -508,6 +508,7 @@ export function StatusStrip({ fireSpread, fireTime, playing, setPlaying, setFire
   return (
     <div className="status-strip">
       <button className={`play-btn ${playing ? 'on' : ''}`}
+        aria-label={playing ? 'หยุดจำลองตามเวลา' : 'เล่นจำลองตามเวลา'}
         onClick={() => {
           if (fireTime >= max) setFireTime(0);
           setPlaying(!playing);
@@ -528,6 +529,7 @@ export function StatusStrip({ fireSpread, fireTime, playing, setPlaying, setFire
           />
         ))}
         <input type="range" min="0" max={max} step="0.1" value={fireTime}
+          aria-label="เลื่อนเวลาจำลองไฟ"
           onChange={e => { setPlaying(false); setFireTime(parseFloat(e.target.value)); }} />
       </div>
       <div className="strip-block">

@@ -6,7 +6,7 @@ export default function FloorPlan({
   nodes, edges, fireNode, smoke = {}, fireSpread = null, fireTime = 0,
   selectedPath = null, bestPath = null, comparePath = null,
   bottleneckEdges = [], maxflowBadges = {}, highlightedNode = null,
-  onNodeClick, formulaOverlay = false,
+  onNodeClick, formulaOverlay = false, evacuees = [],
 }) {
   const W = 1080, H = 740;
   const nodeIndex = useMemo(() => {
@@ -238,7 +238,29 @@ export default function FloorPlan({
         );
       })}
 
+      {/* Evacuees — one dot per occupied room, moving along its route as
+          the fire timeline plays. Arrived dots fade at their exit. */}
+      <g>
+        {evacuees.map(p => (
+          <g key={`evac-${p.source}`} opacity={p.arrived ? 0.45 : 1}>
+            <circle cx={p.x} cy={p.y} r={p.arrived ? 5 : 7}
+              fill="var(--accent-cyan)" stroke="var(--bg-0)" strokeWidth="1.5" />
+            {!p.arrived && (
+              <circle cx={p.x} cy={p.y} r="11" fill="none"
+                stroke="var(--accent-cyan)" strokeWidth="1" opacity="0.5">
+                <animate attributeName="r" values="8;13;8" dur="1.2s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.6;0.15;0.6" dur="1.2s" repeatCount="indefinite" />
+              </circle>
+            )}
+            {p.arrived && (
+              <text x={p.x} y={p.y - 9} textAnchor="middle" className="evac-ok">✓</text>
+            )}
+          </g>
+        ))}
+      </g>
+
       <style>{`
+        .evac-ok { fill: var(--accent-lime); font-size: 11px; font-weight: 700; }
         .floor-label { fill: var(--ink-3); font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; }
         .floor-label-sub { fill: var(--ink-4); font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.16em; }
         .node-id { font-family: var(--font-mono); font-size: 10px; font-weight: 600; fill: var(--ink-0); letter-spacing: 0.04em; }

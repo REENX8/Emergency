@@ -9,6 +9,7 @@ import {
   reconstructPath,
   planEvacuation,
   computeFireSpread,
+  evacueePositions,
   safetyScore,
 } from './sim';
 
@@ -121,5 +122,50 @@ describe('safetyScore', () => {
     const fewer = safetyScore(nodes.filter((n) => n.id !== 'e2'), edges);
     const more = safetyScore(nodes, edges);
     expect(more.score).toBeGreaterThanOrEqual(fewer.score);
+  });
+});
+
+describe('evacueePositions — animation interpolation', () => {
+  // r1 → c1 (10 m ≈ 7.14 s) → e1 (10 m ≈ 7.14 s); total ≈ 14.29 s
+  const routes = planEvacuation(nodes, edges, { occupied_rooms: ['r1'] });
+
+  it('returns no dots before the clock starts', () => {
+    expect(evacueePositions(nodes, edges, routes, 0)).toEqual([]);
+  });
+
+  it('places the dot on the first edge early in the walk', () => {
+    const [p] = evacueePositions(nodes, edges, routes, 3.57); // half of edge 1
+    expect(p.arrived).toBe(false);
+    expect(p.x).toBeCloseTo(30, 0); // halfway r1(0,0) → c1(60,0)
+    expect(p.y).toBeCloseTo(0, 5);
+    expect(p.progress).toBeGreaterThan(0);
+    expect(p.progress).toBeLessThan(1);
+  });
+
+  it('places the dot on the second edge later in the walk', () => {
+    const [p] = evacueePositions(nodes, edges, routes, 10.71); // 7.14 + 3.57
+    expect(p.x).toBeCloseTo(90, 0); // halfway c1(60,0) → e1(120,0)
+  });
+
+  it('parks the dot at the exit once the route time elapses', () => {
+    const [p] = evacueePositions(nodes, edges, routes, 999);
+    expect(p.arrived).toBe(true);
+    expect(p.x).toBe(120);
+    expect(p.progress).toBe(1);
+  });
+
+  it('skips unreachable routes', () => {
+    const blocked = planEvacuation(nodes, edges, {
+      occupied_rooms: ['r1'], blocked_exits: ['e1', 'e2'],
+    });
+    expect(evacueePositions(nodes, edges, blocked, 5)).toEqual([]);
+  });
+
+  it('slows the dot down under crowd density (same clock as the router)', () => {
+    const crowd = { c1: 0.5 };
+    const slowRoutes = planEvacuation(nodes, edges, { occupied_rooms: ['r1'], crowd });
+    const fast = evacueePositions(nodes, edges, routes, 5)[0];
+    const slow = evacueePositions(nodes, edges, slowRoutes, 5, {}, crowd)[0];
+    expect(slow.x).toBeLessThan(fast.x);
   });
 });

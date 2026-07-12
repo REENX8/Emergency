@@ -53,8 +53,11 @@ fire-spread model, smoke-propagation model, safety-score analysis และล�
       wsUrlFor, OfflineBanner); frontend: Jest 14 ตัว (sim.js: weight/smoke/dijkstra/
       planEvacuation/fireSpread/safetyScore) — รันใน CI ทั้งคู่
 - [x] mypy สะอาดทั้ง backend และบังคับใน CI (เอา continue-on-error ออก)
+- [x] Animation การอพยพตามเวลา — จุดผู้อพยพเคลื่อนตามเส้นทางบน FloorPlan ด้วย
+      นาฬิกาเดียวกับ fire timeline (`evacueePositions` ใน sim.js + เทสต์ 6 ตัว)
+- [x] Performance test อาคารใหญ่ — grid 2000 nodes: หาเส้นทางครบ 4 exit < 1 วินาที
+      และ A* settle nodes ≤ Dijkstra (`backend/test_performance.py`)
 - [ ] E2E smoke test (Playwright): login → เลือกอาคาร → จำลองไฟ → เห็นเส้นทาง
-- [ ] Animation การอพยพตามเวลา (คนเคลื่อนตาม timestep) บน FloorPlan
 
 ### กลาง
 - [ ] Redis pub/sub ใน `realtime.py` เพื่อรองรับ multi-instance deploy
@@ -64,8 +67,8 @@ fire-spread model, smoke-propagation model, safety-score analysis และล�
 
 ### ยาว
 - [ ] Sentry / OpenTelemetry
-- [ ] Performance test อาคารใหญ่ (nodes ~5000)
-- [ ] Accessibility audit (keyboard nav, ARIA, contrast) ทั้ง 2 แอป
+- [ ] Accessibility audit เต็มรูปแบบ (keyboard nav, contrast) — เริ่มแล้ว:
+      lang="th", aria-label ปุ่ม icon-only + timeline slider ฝั่ง console
 
 ---
 
