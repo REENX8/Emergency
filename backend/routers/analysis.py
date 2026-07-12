@@ -52,7 +52,7 @@ def connectivity_check(
 ):
     _get_building_or_404(building_id, db)
     G = build_graph_from_db(building_id, db)
-    blocked = [tuple(e) for e in req.blocked_edges]
+    blocked = [(e[0], e[1]) for e in req.blocked_edges if len(e) == 2]
     return check_connectivity(G, blocked_edges=blocked)
 
 

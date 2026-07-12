@@ -163,7 +163,7 @@ def check_exit_count(G: nx.Graph, total_floors: int) -> list[ComplianceFinding]:
 def check_travel_distance(G: nx.Graph, has_sprinkler: bool) -> list[ComplianceFinding]:
     """Use Dijkstra on the `distance` attribute (metres) to measure travel
     path from each room to the nearest reachable exit."""
-    findings = []
+    findings: list[ComplianceFinding] = []
     exits = _exits(G)
     if not exits:
         return findings  # caught by check_exit_count

@@ -1,5 +1,5 @@
 import { useQueries, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { getBuilding, listEdges, listFloors, listIncidents, listNodes } from '../api/client';
@@ -18,13 +18,18 @@ export default function FloorMap() {
   const [userNodeKey, setUserNodeKeyRaw] = useState<string | null>(() =>
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(storageKey) : null,
   );
-  const setUserNodeKey = (k: string | null) => {
-    setUserNodeKeyRaw(k);
-    try {
-      if (k) sessionStorage.setItem(storageKey, k);
-      else sessionStorage.removeItem(storageKey);
-    } catch { /* private mode */ }
-  };
+  const setUserNodeKey = useCallback(
+    (k: string | null) => {
+      setUserNodeKeyRaw(k);
+      try {
+        if (k) sessionStorage.setItem(storageKey, k);
+        else sessionStorage.removeItem(storageKey);
+      } catch {
+        /* private mode */
+      }
+    },
+    [storageKey],
+  );
 
   const [reportOpen, setReportOpen] = useState(false);
   const [reportNodeKey, setReportNodeKey] = useState<string | null>(null);
@@ -58,8 +63,8 @@ export default function FloorMap() {
   });
 
   const floor = floorsQ.data?.find((f) => f.floor_number === floorNum);
-  const allNodes = nodesQ.data ?? [];
-  const allEdges = edgesQ.data ?? [];
+  const allNodes = useMemo(() => nodesQ.data ?? [], [nodesQ.data]);
+  const allEdges = useMemo(() => edgesQ.data ?? [], [edgesQ.data]);
   const incidents = useMemo(() => incQ.data ?? [], [incQ.data]);
 
   const nodesById = useMemo(() => new Map(allNodes.map((n) => [n.node_key, n])), [allNodes]);
@@ -80,7 +85,7 @@ export default function FloorMap() {
     if (!nodesQ.data || !userNodeKey) return;
     const n = nodesById.get(userNodeKey);
     if (!n || n.floor_number !== floorNum) setUserNodeKey(null);
-  }, [nodesQ.data, userNodeKey, floorNum, nodesById]);
+  }, [nodesQ.data, userNodeKey, floorNum, nodesById, setUserNodeKey]);
 
   const handleTapNode = (key: string) => {
     const n = nodesById.get(key);

@@ -11,12 +11,12 @@ import { API_URL } from '../api/client';
 
 export interface BuildingEvent {
   type: string;
-  payload: any;
+  payload: Record<string, unknown>;
   actor: { id: number; email: string; role: string } | null;
   ts: string;
 }
 
-function wsUrlFor(buildingId: string | number): string {
+export function wsUrlFor(buildingId: string | number): string {
   // API_URL might be '/api' (relative) or 'http(s)://...' — handle both.
   if (API_URL.startsWith('http')) {
     return `${API_URL.replace(/^http/, 'ws')}/buildings/${buildingId}/ws`;

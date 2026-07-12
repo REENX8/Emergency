@@ -110,8 +110,8 @@ def _dijkstra_full(
     if target not in dist or dist[target] == float("inf"):
         return None, float("inf"), nodes_settled
 
-    path = []
-    node = target
+    path: list[str] = []
+    node: str | None = target
     while node is not None:
         path.append(node)
         node = prev[node]
@@ -158,8 +158,8 @@ def _astar_full(
     if target not in g_score or g_score[target] == float("inf"):
         return None, float("inf"), nodes_settled
 
-    path = []
-    node = target
+    path: list[str] = []
+    node: str | None = target
     while node is not None:
         path.append(node)
         node = prev[node]
@@ -171,7 +171,7 @@ def dijkstra(
     G: nx.Graph,
     source: str,
     target: str,
-) -> tuple[list[str], float] | tuple[None, float]:
+) -> tuple[list[str] | None, float]:
     """
     Single-source shortest path from source to target using Dijkstra's algorithm.
 
@@ -186,7 +186,7 @@ def astar(
     G: nx.Graph,
     source: str,
     target: str,
-) -> tuple[list[str], float] | tuple[None, float]:
+) -> tuple[list[str] | None, float]:
     """
     A* shortest path from source to target.
     Uses Euclidean pixel distance as an admissible heuristic.

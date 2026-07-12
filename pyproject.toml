@@ -29,8 +29,13 @@ indent-style = "space"
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
-warn_return_any = true
+# Most deps (jose, passlib, slowapi, networkx) ship no stubs, so their
+# returns are Any — warning on every such return is pure noise here.
+warn_return_any = false
 warn_unused_ignores = true
+# Alembic migrations use its runtime-proxy `op`/`context` attributes that
+# mypy cannot see; the standard practice is to exclude them.
+exclude = "(^|/)alembic/"
 
 [tool.pytest.ini_options]
 testpaths = ["backend"]

@@ -49,7 +49,10 @@ fire-spread model, smoke-propagation model, safety-score analysis และล�
 ## 🔜 งานที่เหลือ (เรียงตามความคุ้มค่า)
 
 ### สั้น
-- [ ] เทสต์ frontend ชุดแรก (Vitest + React Testing Library) — `api/client`, simulation flow
+- [x] เทสต์ frontend ชุดแรก — user-app: Vitest+RTL 15 ตัว (i18n, imageUrl, client,
+      wsUrlFor, OfflineBanner); frontend: Jest 14 ตัว (sim.js: weight/smoke/dijkstra/
+      planEvacuation/fireSpread/safetyScore) — รันใน CI ทั้งคู่
+- [x] mypy สะอาดทั้ง backend และบังคับใน CI (เอา continue-on-error ออก)
 - [ ] E2E smoke test (Playwright): login → เลือกอาคาร → จำลองไฟ → เห็นเส้นทาง
 - [ ] Animation การอพยพตามเวลา (คนเคลื่อนตาม timestep) บน FloorPlan
 
@@ -70,8 +73,8 @@ fire-spread model, smoke-propagation model, safety-score analysis และล�
 
 - **Backend:** `cd backend && RATE_LIMIT_ENABLED=0 pytest -q` ผ่านครบ +
   `ruff check backend/ && ruff format --check backend/` สะอาด
-- **Frontend:** `npm run lint && npm run build` ผ่านทั้ง `frontend/` และ `user-app/`
-  (+ `npx tsc --noEmit` ใน user-app)
+- **Frontend:** `npm run lint && npm test && npm run build` ผ่านทั้ง `frontend/`
+  และ `user-app/` (+ `npx tsc --noEmit` ใน user-app; lint = 0 warnings)
 - **Migrations:** `alembic upgrade head` บน DB เปล่าสำเร็จ
 - **E2E manual:** `docker compose up --build` → seed → จำลองไฟ → เห็นเส้นทาง + safety score;
   รายงาน incident จาก user-app (:3001) แล้วเห็น update ทันทีบน console (:3000) ผ่าน WebSocket

@@ -94,6 +94,6 @@ export interface EvacuateResponse {
   smoke_blocked_edges: [string, string][];
   removed_exits: string[];
   evacuation_estimate?: EvacuationEstimate;
-  graph_state?: { nodes: any[]; edges: any[] };
+  graph_state?: { nodes: Record<string, unknown>[]; edges: Record<string, unknown>[] };
   floors?: Floor[];
 }
