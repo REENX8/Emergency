@@ -55,6 +55,14 @@ function BuildingCard({ b, onEdit, onSimulate, onCompliance, onExperiments, onDe
           <div><span className="mono small">{nodeCount}</span> <span className="mono micro dim">NODES</span></div>
           <div><span className="mono small">{edgeCount}</span> <span className="mono micro dim">EDGES</span></div>
           <div><span className="mono small">{b.total_floors || '—'}</span> <span className="mono micro dim">FLOORS</span></div>
+          {b.active_incidents > 0 && (
+            <div>
+              <span className="mono small" style={{ color: 'var(--accent-red)' }}>
+                ⚠ {b.active_incidents}
+              </span>{' '}
+              <span className="mono micro dim">LIVE</span>
+            </div>
+          )}
         </div>
         <div className="b-card-meta mono micro dim">
           {b.has_sprinkler ? '💧 Sprinkler' : '— No sprinkler'} · {b.building_type || 'office'}
@@ -101,9 +109,15 @@ export default function BuildingManager() {
   const [addError, setAddError]   = useState(null);
 
   const load = () =>
-    http.get('/buildings', { params: { limit: 500 } })
+    // /buildings/summary enriches each row with node/edge counts, live
+    // safety score+grade, and active incident count; fall back to the
+    // plain list if the summary endpoint is unavailable.
+    http.get('/buildings/summary', { params: { limit: 200 } })
         .then(r => setBuildings(r.data.items ?? r.data))
-        .catch(() => {});
+        .catch(() =>
+          http.get('/buildings', { params: { limit: 500 } })
+              .then(r => setBuildings(r.data.items ?? r.data))
+              .catch(() => {}));
 
   useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

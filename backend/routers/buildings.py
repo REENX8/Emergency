@@ -6,9 +6,11 @@ import copy
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import storage
+from analysis import compute_safety_score
 from audit import audit
 from auth import require_role
 from database import get_db
@@ -18,7 +20,7 @@ from dynamic_graph import (
     graph_to_cytoscape,
     invalidate_graph_cache,
 )
-from models import Building, Edge, Floor, Node, User
+from models import Building, Edge, Floor, Incident, Node, User
 from pathfinding import compare_algorithms, estimate_evacuation_time, find_all_exit_routes
 from rate_limit import limiter, user_or_ip
 from realtime import broadcast_sync
@@ -90,6 +92,60 @@ def list_buildings(
     q = db.query(Building).order_by(Building.created_at.desc())
     total = q.count()
     items = q.offset(offset).limit(limit).all()
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+# NOTE: /summary must be registered before /{building_id} so FastAPI matches
+# the literal path first.
+@router.get("/summary")
+def buildings_summary(
+    db: Session = Depends(get_db),
+    limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    """Dashboard rollup: per building, graph size, active incidents, and the
+    live safety score/grade (computed on the cached building graph).
+
+    Public like GET /buildings — the mobile user-app and the console's
+    building list both use it.
+    """
+    q = db.query(Building).order_by(Building.created_at.desc())
+    total = q.count()
+    buildings = q.offset(offset).limit(limit).all()
+
+    items = []
+    for b in buildings:
+        node_count = db.query(func.count(Node.id)).filter(Node.building_id == b.id).scalar() or 0
+        edge_count = db.query(func.count(Edge.id)).filter(Edge.building_id == b.id).scalar() or 0
+        active_incidents = (
+            db.query(func.count(Incident.id))
+            .filter(Incident.building_id == b.id, Incident.is_active == True)  # noqa: E712
+            .scalar()
+            or 0
+        )
+        safety_score = None
+        safety_grade = None
+        if node_count:
+            G = build_graph_from_db(b.id, db)
+            safety = compute_safety_score(G)
+            safety_score = safety.get("score")
+            safety_grade = safety.get("grade")
+        items.append(
+            {
+                "id": b.id,
+                "name": b.name,
+                "address": b.address,
+                "description": b.description,
+                "total_floors": b.total_floors,
+                "building_type": b.building_type,
+                "has_sprinkler": b.has_sprinkler,
+                "node_count": node_count,
+                "edge_count": edge_count,
+                "active_incidents": active_incidents,
+                "safety_score": safety_score,
+                "safety_grade": safety_grade,
+            }
+        )
     return {"items": items, "total": total, "limit": limit, "offset": offset}
 
 

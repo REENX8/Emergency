@@ -207,3 +207,43 @@ def test_edge_self_loop_rejected(client, admin_headers):
     )
     assert r.status_code == 400
     assert "self-loop" in r.json()["detail"].lower()
+
+
+def test_summary_reports_counts_scores_and_incidents(client, admin_headers):
+    payload = {
+        "name": "Summary",
+        "total_floors": 1,
+        "nodes": [
+            {"node_key": "r1", "type": "room", "floor_number": 1, "capacity": 20},
+            {"node_key": "e1", "type": "exit", "floor_number": 1},
+        ],
+        "edges": [{"u_key": "r1", "v_key": "e1", "distance_m": 5}],
+    }
+    bid = client.post("/buildings/import", json=payload, headers=admin_headers).json()["id"]
+    client.post(
+        f"/buildings/{bid}/incidents",
+        json={"node_key": "r1", "incident_type": "smoke", "severity": 0.4},
+    )
+
+    r = client.get("/buildings/summary")
+    assert r.status_code == 200
+    body = r.json()
+    row = next(i for i in body["items"] if i["id"] == bid)
+    assert row["node_count"] == 2
+    assert row["edge_count"] == 1
+    assert row["active_incidents"] == 1
+    assert isinstance(row["safety_score"], (int, float))
+    assert row["safety_grade"] in {"A", "B", "C", "D", "F"}
+
+
+def test_summary_empty_building_has_null_score(client, admin_headers):
+    bid = client.post("/buildings", json={"name": "Empty"}, headers=admin_headers).json()["id"]
+    r = client.get("/buildings/summary")
+    row = next(i for i in r.json()["items"] if i["id"] == bid)
+    assert row["node_count"] == 0
+    assert row["safety_score"] is None
+    assert row["safety_grade"] is None
+
+
+def test_summary_is_public(client):
+    assert client.get("/buildings/summary").status_code == 200

@@ -62,7 +62,9 @@ fire-spread model, smoke-propagation model, safety-score analysis และล�
 
 ### กลาง
 - [ ] Redis pub/sub ใน `realtime.py` เพื่อรองรับ multi-instance deploy
-- [ ] Dashboard สรุป safety score หลายอาคาร + แนวโน้ม
+- [x] Dashboard สรุป safety score หลายอาคาร — `GET /buildings/summary`
+      (score/grade + nodes/edges + active incidents ต่ออาคาร) แสดงบนการ์ด
+      หน้ารายการอาคารของ console พร้อม badge ⚠ เหตุการณ์สด
 - [ ] Export รายงานจำลองเป็น PDF
 - [ ] Geolocation ใน user-app → แนะนำ exit ใกล้สุดอัตโนมัติ
 

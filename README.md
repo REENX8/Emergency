@@ -146,6 +146,7 @@ model และ**จุดผู้อพยพเคลื่อนจากห
 |---|---|---|
 | `POST` | `/buildings` | สร้าง building ใหม่ |
 | `GET` | `/buildings` | ดู building ทั้งหมด |
+| `GET` | `/buildings/summary` | dashboard rollup: nodes/edges, safety score+grade, active incidents ต่ออาคาร |
 | `GET` | `/buildings/{id}` | ดู building เดียว |
 | `DELETE` | `/buildings/{id}` | ลบ building |
 | `POST` | `/buildings/import` | นำเข้า building + nodes + edges จาก JSON เดียว |
