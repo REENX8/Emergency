@@ -21,3 +21,4 @@ Thumbs.db
 # Claude Code internal
 .claude/
 *.db
+e2e/shots/

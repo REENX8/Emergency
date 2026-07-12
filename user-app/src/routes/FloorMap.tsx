@@ -62,8 +62,24 @@ export default function FloorMap() {
     }
   });
 
-  const floor = floorsQ.data?.find((f) => f.floor_number === floorNum);
   const allNodes = useMemo(() => nodesQ.data ?? [], [nodesQ.data]);
+  // Prefer the uploaded floor record; fall back to a synthetic floor when the
+  // building has nodes on this floor but no floor-plan image — the canvas
+  // renders a schematic view from node coordinates in that case.
+  const floor = useMemo(() => {
+    const uploaded = floorsQ.data?.find((f) => f.floor_number === floorNum);
+    if (uploaded) return uploaded;
+    if (!allNodes.some((n) => n.floor_number === floorNum)) return undefined;
+    return {
+      id: -floorNum,
+      building_id: Number(id),
+      floor_number: floorNum,
+      image_filename: null,
+      image_width_px: 0,
+      image_height_px: 0,
+      scale_px_per_m: 6,
+    };
+  }, [floorsQ.data, allNodes, floorNum, id]);
   const allEdges = useMemo(() => edgesQ.data ?? [], [edgesQ.data]);
   const incidents = useMemo(() => incQ.data ?? [], [incQ.data]);
 

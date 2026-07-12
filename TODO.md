@@ -57,7 +57,8 @@ fire-spread model, smoke-propagation model, safety-score analysis และล�
       นาฬิกาเดียวกับ fire timeline (`evacueePositions` ใน sim.js + เทสต์ 6 ตัว)
 - [x] Performance test อาคารใหญ่ — grid 2000 nodes: หาเส้นทางครบ 4 exit < 1 วินาที
       และ A* settle nodes ≤ Dijkstra (`backend/test_performance.py`)
-- [ ] E2E smoke test (Playwright): login → เลือกอาคาร → จำลองไฟ → เห็นเส้นทาง
+- [x] E2E smoke test (Playwright) — `e2e/smoke.js`: login → simulation →
+      เล่น timeline → user-app floor map พร้อม screenshot (ดู `e2e/README.md`)
 
 ### กลาง
 - [ ] Redis pub/sub ใน `realtime.py` เพื่อรองรับ multi-instance deploy

@@ -34,6 +34,14 @@ export default function FloorPicker() {
     }
   }
 
+  // A building is usable without uploaded floor-plan images: any floor that
+  // has nodes gets a tile (the map falls back to a schematic view). Uploaded
+  // floors and node-derived floors are merged.
+  const floorNumbers = new Set<number>();
+  floorsQ.data?.forEach((f) => floorNumbers.add(f.floor_number));
+  nodesQ.data?.forEach((n) => floorNumbers.add(n.floor_number));
+  const floorList = [...floorNumbers].sort((a, b) => a - b);
+
   return (
     <div className="screen">
       <header className="app-bar">
@@ -46,31 +54,29 @@ export default function FloorPicker() {
 
       <main className="screen-body">
         {isLoading && <div className="state-msg">กำลังโหลด…</div>}
-        {floorsQ.data && floorsQ.data.length === 0 && (
+        {!isLoading && floorList.length === 0 && (
           <div className="state-msg">ยังไม่มีข้อมูลชั้นในอาคารนี้</div>
         )}
-        {floorsQ.data && floorsQ.data.length > 0 && (
+        {floorList.length > 0 && (
           <div className="floor-grid">
-            {[...floorsQ.data]
-              .sort((a, b) => a.floor_number - b.floor_number)
-              .map((f) => {
-                const count = floorIncidentCount.get(f.floor_number) ?? 0;
-                return (
-                  <Link
-                    key={f.id}
-                    to={`/b/${id}/f/${f.floor_number}`}
-                    className={`floor-tile ${count > 0 ? 'has-incident' : ''}`}
-                  >
-                    <div className="floor-tile-label">ชั้น</div>
-                    <div className="floor-tile-num">{f.floor_number}</div>
-                    {count > 0 && (
-                      <div className="floor-tile-badge">
-                        <span className="badge-dot" /> {count} จุดมีปัญหา
-                      </div>
-                    )}
-                  </Link>
-                );
-              })}
+            {floorList.map((floorNumber) => {
+              const count = floorIncidentCount.get(floorNumber) ?? 0;
+              return (
+                <Link
+                  key={floorNumber}
+                  to={`/b/${id}/f/${floorNumber}`}
+                  className={`floor-tile ${count > 0 ? 'has-incident' : ''}`}
+                >
+                  <div className="floor-tile-label">ชั้น</div>
+                  <div className="floor-tile-num">{floorNumber}</div>
+                  {count > 0 && (
+                    <div className="floor-tile-badge">
+                      <span className="badge-dot" /> {count} จุดมีปัญหา
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         )}
       </main>
